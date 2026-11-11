@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from toolguru_lib import cutter
+from toolguru_lib import assembly, cutter
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,9 @@ class ObservationRecord:
     unit: str
     tool_number: int | None
     holder: str
+    holder_product_id: str    # normalized; see assembly.describe
+    holder_shape: str
+    stickout_mm: float | None
     spindle_speed: str
     feed: str
     preset: str
@@ -54,7 +57,7 @@ def build_observation(*, file_id: str, setup_name: str, machine: str,
     if identity is None:
         return None
     number = (tool.get('post-process') or {}).get('number')
-    holder = (tool.get('holder') or {}).get('description') or ''
+    held = assembly.describe(tool)
     return ObservationRecord(
         file_id=file_id,
         setup_name=setup_name,
@@ -67,7 +70,10 @@ def build_observation(*, file_id: str, setup_name: str, machine: str,
         description=str(tool.get('description') or ''),
         unit=str(tool.get('unit') or ''),
         tool_number=number if isinstance(number, int) else None,
-        holder=str(holder),
+        holder=held.holder_label,
+        holder_product_id=held.holder_product_id,
+        holder_shape=held.holder_shape,
+        stickout_mm=held.stickout_mm,
         spindle_speed=spindle_speed,
         feed=feed,
         preset=preset,

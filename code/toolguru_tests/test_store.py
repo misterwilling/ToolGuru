@@ -1,5 +1,8 @@
 """Scan storage: rescans replace, Trial and Main never touch each other."""
 
+import sqlite3
+from contextlib import closing
+
 import pytest
 
 from toolguru_lib.store import Store, dataset_path
@@ -117,3 +120,33 @@ def test_backup_never_overwrites_an_existing_backup(tmp_path):
     with pytest.raises(FileExistsError):
         main.backup_and_clear('stamp')
     assert main.counts()['documents'] == 1
+
+
+def test_holder_and_stickout_round_trip(trial):
+    observation = make_observation('a')
+    trial.replace_document(make_document('a'), [observation])
+    row = trial.observation_rows()[0]
+    assert row['holder'] == 'Test Holder'
+    assert row['holder_product_id'] == 'th-100'
+    assert row['holder_shape'] == observation.holder_shape != ''
+    assert row['stickout_mm'] == 38.1
+
+
+def test_a_dataset_from_before_holders_were_recorded_is_upgraded(tmp_path):
+    """A file written by the first release has no holder columns. Opening it
+    adds them and fills them from the stored tool JSON, so no rescan is needed."""
+    store = Store(dataset_path('trial', tmp_path))
+    observation = make_observation('a')
+    store.replace_document(make_document('a'), [observation])
+    with closing(sqlite3.connect(store.path)) as conn, conn:
+        for column in ('holder_product_id', 'holder_shape', 'stickout_mm'):
+            conn.execute(f'ALTER TABLE observations DROP COLUMN {column}')
+
+    reopened = Store(store.path)
+
+    row = reopened.observation_rows()[0]
+    assert row['holder_product_id'] == 'th-100'
+    assert row['holder_shape'] == observation.holder_shape
+    assert row['stickout_mm'] == 38.1
+    reopened.replace_document(make_document('b'), [make_observation('b')])
+    assert reopened.counts() == {'documents': 2, 'observations': 2, 'cutters': 1}

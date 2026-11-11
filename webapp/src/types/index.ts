@@ -1,5 +1,10 @@
 export type Dataset = 'trial' | 'main'
 
+/** 'cutter': same cutter geometry is one tool. 'assembly': holder and stickout count too. */
+export type CountBy = 'cutter' | 'assembly'
+
+export type LengthUnit = 'in' | 'mm'
+
 export interface TallyRow {
   cutter_key: string
   tool_type: string
@@ -16,6 +21,11 @@ export interface TallyRow {
   tool_numbers: number[]
   machines: string[]
   units: string[]
+  // Present only when counting by assembly.
+  assembly_key?: string
+  holder?: string
+  stickout_min_mm?: number | null
+  stickout_max_mm?: number | null
 }
 
 export interface Counts {
@@ -34,6 +44,8 @@ export interface LastScan {
 export interface AppState {
   dataset: Dataset
   counts: Counts
+  countBy: CountBy
+  stickoutToleranceMm: number
   tally: TallyRow[]
   lastScan: LastScan | null
   notice: string

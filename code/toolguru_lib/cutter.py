@@ -72,8 +72,9 @@ def family_of(tool_type: str) -> str | None:
     return _FAMILY_BY_TYPE.get(tool_type, 'other')
 
 
-def to_mm(value: float, unit: str) -> Decimal:
-    """Convert a length to millimetres, rounded half-up to 0.001 mm.
+def to_mm(value: float, unit: str, quantum: Decimal = _QUANTUM) -> Decimal:
+    """Convert a length to millimetres, rounded half-up to `quantum`
+    (0.001 mm unless told otherwise).
 
     Decimal arithmetic keeps 0.1875 in and 4.7625 mm on the same side of the
     rounding boundary, which binary floats do not guarantee.
@@ -81,7 +82,7 @@ def to_mm(value: float, unit: str) -> Decimal:
     if unit not in _UNIT_FACTORS:
         raise ValueError(f'Unknown tool unit: {unit!r}')
     exact = Decimal(repr(float(value))) * _UNIT_FACTORS[unit]
-    return exact.quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+    return exact.quantize(quantum, rounding=ROUND_HALF_UP)
 
 
 def _number(value: object) -> float | None:

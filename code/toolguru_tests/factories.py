@@ -8,6 +8,24 @@ from toolguru_lib.records import (
     DocumentRecord, ObservationRecord, build_observation)
 
 
+def make_holder(**overrides) -> dict:
+    """A made-up two-step holder, in the shape Fusion stores one."""
+    holder = {
+        'type': 'holder',
+        'unit': 'inches',
+        'description': 'Test Holder',
+        'product-id': 'TH-100',
+        'vendor': 'Example Tooling',
+        'gaugeLength': 3.0,
+        'segments': [
+            {'height': 1.0, 'lower-diameter': 1.0, 'upper-diameter': 1.25},
+            {'height': 2.0, 'lower-diameter': 1.75, 'upper-diameter': 1.75},
+        ],
+    }
+    holder.update(overrides)
+    return holder
+
+
 def make_tool(**overrides) -> dict:
     """A 1/2 inch 3-flute carbide flat end mill, in Fusion's Tool.toJson() shape."""
     geometry = {
@@ -22,7 +40,7 @@ def make_tool(**overrides) -> dict:
         'BMC': 'carbide',
         'description': '1/2 flat end mill',
         'geometry': geometry,
-        'holder': {'description': 'Test Holder'},
+        'holder': make_holder(),
         'post-process': {'number': 7},
         'vendor': 'Example Tooling',
         'product-id': 'EX-500',

@@ -7,10 +7,14 @@ import {
   formatDate,
   formatDiameter,
   formatDuration,
+  formatStickout,
+  formatTolerance,
   formatToolNumbers,
   isAppState,
+  rowKey,
   sortTally,
   toggleSort,
+  toleranceToMm,
 } from './utils'
 import type { TallyRow } from './types'
 
@@ -210,5 +214,86 @@ describe('isAppState', () => {
   it('rejects an error reply and a missing reply', () => {
     expect(isAppState({ error: 'Internal error' })).toBe(false)
     expect(isAppState(null)).toBe(false)
+  })
+})
+
+describe('rowKey', () => {
+  it('is the cutter key when counting by cutter', () => {
+    expect(rowKey(makeRow({ cutter_key: 'c1' }))).toBe('c1')
+  })
+
+  it('is the assembly key when counting by assembly', () => {
+    expect(rowKey(makeRow({ cutter_key: 'c1', assembly_key: 'c1|id:th-100|38.100' }))).toBe(
+      'c1|id:th-100|38.100',
+    )
+  })
+})
+
+describe('formatStickout', () => {
+  it('shows one value when every use had the same stickout', () => {
+    expect(formatStickout(38.1, 38.1, ['inches'])).toBe('38.100 mm / 1.5000 in')
+  })
+
+  it('shows the range an assembly covers', () => {
+    expect(formatStickout(38.1, 38.354, ['inches'])).toBe('38.100–38.354 mm / 1.5000–1.5100 in')
+  })
+
+  it('leaves inches out for a tool only ever entered in millimetres', () => {
+    expect(formatStickout(40, 40.4, ['millimeters'])).toBe('40.000–40.400 mm')
+    expect(formatStickout(40, 40, ['millimeters'])).toBe('40.000 mm')
+  })
+
+  it('shows a dash when the stickout was not recorded', () => {
+    expect(formatStickout(null, null, ['inches'])).toBe('—')
+    expect(formatStickout(undefined, undefined, ['inches'])).toBe('—')
+  })
+
+  it('shows zero stickout as a value, not as missing', () => {
+    expect(formatStickout(0, 0, ['millimeters'])).toBe('0.000 mm')
+  })
+})
+
+describe('formatTolerance', () => {
+  it('shows millimetres and inches', () => {
+    expect(formatTolerance(0.5)).toBe('0.500 mm / 0.0197 in')
+    expect(formatTolerance(0)).toBe('0.000 mm / 0.0000 in')
+  })
+})
+
+describe('toleranceToMm', () => {
+  it('converts inches to millimetres', () => {
+    expect(toleranceToMm('0.020', 'in')).toBe(0.508)
+    expect(toleranceToMm('.01', 'in')).toBe(0.254)
+  })
+
+  it('keeps millimetres as typed', () => {
+    expect(toleranceToMm('0.5', 'mm')).toBe(0.5)
+  })
+
+  it('accepts zero, meaning an exact match', () => {
+    expect(toleranceToMm('0', 'in')).toBe(0)
+  })
+
+  it('refuses blank, negative and non-numeric entries', () => {
+    expect(toleranceToMm('', 'mm')).toBeNull()
+    expect(toleranceToMm('   ', 'mm')).toBeNull()
+    expect(toleranceToMm('-0.1', 'mm')).toBeNull()
+    expect(toleranceToMm('wide', 'in')).toBeNull()
+    expect(toleranceToMm('Infinity', 'mm')).toBeNull()
+  })
+})
+
+describe('assembly rows in the table', () => {
+  const short = makeRow({ assembly_key: 'c1|id:a|38.100', holder: 'ER32 short', operations: 4 })
+  const long = makeRow({ assembly_key: 'c1|id:b|38.100', holder: 'Shrink fit long', operations: 4 })
+
+  it('filters by holder name', () => {
+    expect(filterTally([short, long], 'shrink', 'all')).toEqual([long])
+  })
+
+  it('keeps two assemblies of one cutter in a stable order when the sort column ties', () => {
+    const sort = { key: 'operations', direction: 'desc' } as const
+    expect(sortTally([long, short], sort)).toEqual([short, long])
+    expect(sortTally([short, long], sort)).toEqual([short, long])
   })
 })

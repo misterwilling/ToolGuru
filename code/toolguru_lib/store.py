@@ -7,12 +7,14 @@ the add-in folder: 'trial' for small test scans (cleared with one call) and
 
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import astuple, fields
 from pathlib import Path
 
+from toolguru_lib import assembly
 from toolguru_lib.records import DocumentRecord, ObservationRecord
 
 DATASETS = ('trial', 'main')
@@ -43,6 +45,9 @@ CREATE TABLE IF NOT EXISTS observations (
     unit TEXT NOT NULL,
     tool_number INTEGER,
     holder TEXT NOT NULL,
+    holder_product_id TEXT NOT NULL DEFAULT '',
+    holder_shape TEXT NOT NULL DEFAULT '',
+    stickout_mm REAL,
     spindle_speed TEXT NOT NULL,
     feed TEXT NOT NULL,
     preset TEXT NOT NULL,
@@ -52,6 +57,32 @@ CREATE TABLE IF NOT EXISTS observations (
 );
 CREATE INDEX IF NOT EXISTS observations_by_cutter ON observations(cutter_key);
 """
+
+# Columns added after datasets already existed. An older file gains them on
+# open and they are filled from each row's stored tool JSON.
+_ADDED_COLUMNS = {
+    'holder_product_id': "TEXT NOT NULL DEFAULT ''",
+    'holder_shape': "TEXT NOT NULL DEFAULT ''",
+    'stickout_mm': 'REAL',
+}
+
+
+def _upgrade(conn: sqlite3.Connection) -> None:
+    present = {row['name'] for row in
+               conn.execute('PRAGMA table_info(observations)')}
+    missing = [name for name in _ADDED_COLUMNS if name not in present]
+    if not missing:
+        return
+    for name in missing:
+        conn.execute(
+            f'ALTER TABLE observations ADD COLUMN {name} {_ADDED_COLUMNS[name]}')
+    for row in conn.execute('SELECT id, tool_json FROM observations').fetchall():
+        held = assembly.describe(json.loads(row['tool_json']))
+        conn.execute(
+            'UPDATE observations SET holder_product_id = ?, holder_shape = ?, '
+            'stickout_mm = ? WHERE id = ?',
+            (held.holder_product_id, held.holder_shape, held.stickout_mm,
+             row['id']))
 
 
 def data_dir() -> Path:
@@ -73,6 +104,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as conn, conn:
             conn.executescript(_SCHEMA)
+            _upgrade(conn)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)

@@ -58,6 +58,16 @@ button.link {
   gap: 8px;
   margin-bottom: 10px;
 }
+.segmented button { border-radius: 0; margin-left: -1px; }
+.segmented button:first-child { border-radius: 3px 0 0 3px; margin-left: 0; }
+.segmented button:last-child { border-radius: 0 3px 3px 0; }
+.segmented button.selected {
+  background: #0a66c2;
+  border-color: #0a66c2;
+  color: #fff;
+  opacity: 1;
+}
+input.short { width: 110px; }
 .confirm {
   display: flex;
   align-items: center;
