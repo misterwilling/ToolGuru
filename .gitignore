@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.md
+coverage-unit.json
+coverage/
+
+# Vendored coverage.py for in-Fusion integration test coverage.
+# Install locally: `pip install coverage --target=code/lib/coverage_pkg`.
+# The `coverage` block inside fusion_test_results.json IS committed.
+code/lib/coverage_pkg/
+code/toolguru_tests/.coverage*
+code/toolguru_tests/fusion_coverage.json
+
+# Node / webapp
+node_modules/
+webapp/dist/
+webapp/*.tsbuildinfo
+
+# Secrets (SEC-1) — none are used today; ignored before any can exist
+.env
+.env.*
+!.env.example
+
+# Scan databases live in the user's home directory, never here
+*.sqlite
+*.sqlite3
+*.db
+
+# Editors
+.vscode/
+.idea/
+.DS_Store

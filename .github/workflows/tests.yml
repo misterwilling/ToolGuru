@@ -1,0 +1,147 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pytest-cov
+      - name: Run unit tests with coverage
+        run: >
+          python -m pytest code/toolguru_tests/ -v
+          --ignore=code/toolguru_tests/test_fusion_results.py
+          --cov=code/toolguru_commands
+          --cov=code/toolguru_lib
+          --cov-report=term-missing
+          --cov-report=markdown:coverage.md
+          --cov-report=json:coverage-unit.json
+          -s
+      - name: Validate Fusion integration test results
+        # Recomputes the codebase hash and checks that fusion_test_results.json
+        # is current. Fails if source files changed since last manual test run.
+        run: python -m pytest code/toolguru_tests/test_fusion_results.py -v
+      - name: Add coverage to job summary
+        if: always()
+        run: |
+          python -c "
+          import json, os
+
+          # Load unit test coverage
+          unit = {}
+          if os.path.exists('coverage-unit.json'):
+              with open('coverage-unit.json') as f:
+                  uj = json.load(f)
+              for fpath, fdata in uj.get('files', {}).items():
+                  name = os.path.basename(fpath)
+                  s = fdata.get('summary', {})
+                  unit[name] = {
+                      'stmts': s.get('num_statements', 0),
+                      'miss': s.get('missing_lines', 0),
+                      'covered': s.get('covered_lines', 0),
+                  }
+
+          # Load fusion integration test coverage
+          fusion = {}
+          fusion_meta = {}
+          if os.path.exists('code/toolguru_tests/fusion_test_results.json'):
+              with open('code/toolguru_tests/fusion_test_results.json') as f:
+                  fr = json.load(f)
+              fusion_meta = fr
+              cov = fr.get('coverage', {})
+              for name, fdata in cov.get('files', {}).items():
+                  fusion[name] = {
+                      'stmts': fdata.get('stmts', 0),
+                      'miss': fdata.get('miss', 0),
+                      'covered': fdata.get('stmts', 0) - fdata.get('miss', 0),
+                  }
+
+          # Compute combined coverage (upper bound — assumes minimal overlap)
+          all_files = sorted(set(list(unit.keys()) + list(fusion.keys())))
+
+          lines = []
+          lines.append('## Combined Test Coverage')
+          lines.append('')
+          lines.append('| File | Stmts | Unit | Fusion | Combined |')
+          lines.append('|------|-------|------|--------|----------|')
+
+          total_stmts = 0
+          total_unit_cov = 0
+          total_fusion_cov = 0
+          total_combined = 0
+
+          for name in all_files:
+              u = unit.get(name, {'stmts': 0, 'miss': 0, 'covered': 0})
+              f = fusion.get(name, {'stmts': 0, 'miss': 0, 'covered': 0})
+              stmts = max(u['stmts'], f['stmts'])
+              if stmts == 0:
+                  continue
+              combined_cov = min(stmts, u['covered'] + f['covered'])
+              u_pct = round(u['covered'] / stmts * 100, 1) if stmts else 0
+              f_pct = round(f['covered'] / stmts * 100, 1) if stmts else 0
+              c_pct = round(combined_cov / stmts * 100, 1) if stmts else 0
+              lines.append(f'| {name} | {stmts} | {u_pct}% | {f_pct}% | **{c_pct}%** |')
+              total_stmts += stmts
+              total_unit_cov += u['covered']
+              total_fusion_cov += f['covered']
+              total_combined += combined_cov
+
+          if total_stmts:
+              u_total = round(total_unit_cov / total_stmts * 100, 1)
+              f_total = round(total_fusion_cov / total_stmts * 100, 1)
+              c_total = round(total_combined / total_stmts * 100, 1)
+              lines.append(f'| **TOTAL** | **{total_stmts}** | **{u_total}%** | **{f_total}%** | **{c_total}%** |')
+
+          lines.append('')
+
+          # Fusion test status
+          if fusion_meta:
+              lines.append('## Fusion Integration Tests')
+              lines.append('')
+              lines.append(f'| Metric | Value |')
+              lines.append(f'|--------|-------|')
+              lines.append(f'| Tests run | {fusion_meta[\"tests_run\"]} |')
+              lines.append(f'| Passed | {fusion_meta[\"passed\"]} |')
+              lines.append(f'| Failed | {fusion_meta[\"failed\"]} |')
+              lines.append(f'| Errors | {fusion_meta[\"errors\"]} |')
+              lines.append(f'| Last run | {fusion_meta[\"timestamp\"]} |')
+          else:
+              lines.append('*No fusion_test_results.json found. Run integration tests in Fusion.*')
+
+          print('\n'.join(lines))
+          " >> $GITHUB_STEP_SUMMARY
+
+  typescript:
+    name: TypeScript Tests & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - run: npm ci
+      - name: Run tests with coverage
+        run: npm run test:coverage 2>&1 | tee coverage-output.txt
+      - name: Add coverage to job summary
+        if: always()
+        run: |
+          echo "## TypeScript Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          sed -n '/^---/,/^===/p' coverage-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - run: npm run build

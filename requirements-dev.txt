@@ -1,0 +1,8 @@
+pytest>=7.0
+pytest-cov>=4.0
+# Coverage measurement inside Fusion's Python during integration tests.
+# Install into the add-in's bundled lib so the testRunner can import it
+# without touching Fusion's site-packages:
+#   pip install coverage --target=code/lib/coverage_pkg
+# The directory is gitignored; each developer installs locally.
+coverage>=7.0

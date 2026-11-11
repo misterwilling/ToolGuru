@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# pre-push hook — run the CI-runnable test layers before a push, so a red
+# suite is caught locally instead of after the push triggers CI.
+#
+# Mirrors CI's fast gate: Python unit tests (pytest) + the webapp unit tests
+# (Vitest). It deliberately does NOT run:
+#   - Fusion integration tests — they can only run inside Fusion 360.
+#   - the integration-hash staleness check (test_fusion_results.py) — that
+#     would hard-block a push whenever source changed but the in-Fusion
+#     "Run Tests" button hasn't been re-clicked, which is a legitimate state.
+#     That gate stays in CI, with /jgl-fusion-push warning you about it.
+#
+# Emergency bypass:  git push --no-verify
+#
+# This hook is version-controlled under .githooks/ and activated once per
+# clone with:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "pre-push: pytest + webapp tests …"
+
+if ! python -m pytest code/toolguru_tests/ -q \
+    --ignore=code/toolguru_tests/test_fusion_results.py; then
+  echo "pre-push: ✗ Python unit tests failed — push aborted." >&2
+  exit 1
+fi
+
+if [ -d webapp ]; then
+  if ! ( cd webapp && npm test ); then
+    echo "pre-push: ✗ webapp unit tests failed — push aborted." >&2
+    exit 1
+  fi
+fi
+
+echo "pre-push: ✓ tests passed."

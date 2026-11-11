@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "1290228f-da85-4f9e-9acb-d61afa9a14b2",
+    "author": "CapitalCNC",
+    "description": {
+        "": "Collects tools from CAM programs, tallies usage and finds duplicates to build a standard tool library."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
