@@ -35,6 +35,9 @@ def compute_codebase_hash():
 
     Files are sorted by relative path for determinism. Both filenames and
     contents are hashed so that renames and additions/removals change the hash.
+    Paths are hashed with forward slashes and contents with LF line endings,
+    so a Windows checkout (backslashes, CRLF) and CI's Linux checkout produce
+    the same digest.
     Returns a hex digest string.
     """
     hasher = hashlib.sha256()
@@ -55,13 +58,14 @@ def compute_codebase_hash():
 
         for filename in filenames:
             if filename.endswith('.py'):
-                files.append(os.path.join(rel_dir, filename))
+                files.append(
+                    os.path.join(rel_dir, filename).replace(os.sep, '/'))
 
     for rel_path in sorted(files):
-        abs_path = os.path.join(_REPO_ROOT, rel_path)
+        abs_path = os.path.join(_REPO_ROOT, *rel_path.split('/'))
         hasher.update(rel_path.encode('utf-8'))
         with open(abs_path, 'rb') as f:
-            hasher.update(f.read())
+            hasher.update(f.read().replace(b'\r\n', b'\n'))
 
     return hasher.hexdigest()
 

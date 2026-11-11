@@ -347,13 +347,15 @@ def _compute_codebase_hash() -> str:
             continue
         for fn in filenames:
             if fn.endswith('.py'):
-                files.append(os.path.join(rel_dir, fn))
+                files.append(os.path.join(rel_dir, fn).replace(os.sep, '/'))
 
+    # Forward-slash paths and LF contents, so a Windows checkout and CI's
+    # Linux checkout produce the same digest. Keep in step with hash_utils.py.
     hasher = hashlib.sha256()
     for rel in sorted(files):
         hasher.update(rel.encode('utf-8'))
-        with open(os.path.join(repo_root, rel), 'rb') as f:
-            hasher.update(f.read())
+        with open(os.path.join(repo_root, *rel.split('/')), 'rb') as f:
+            hasher.update(f.read().replace(b'\r\n', b'\n'))
     return hasher.hexdigest()
 
 
