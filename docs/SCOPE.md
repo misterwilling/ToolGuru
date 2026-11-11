@@ -121,6 +121,19 @@ Three test layers:
   top folder. Folders nest at least two levels below that.
 - Other installed add-ins fire their document-opened handlers on every document
   the scan opens. The scan never saves, so their in-memory changes are discarded.
+- `doc.products.itemByProductType('CAMProductType')` raises for a document that
+  was never opened in Manufacturing; it does not return None.
+- `MachiningTime.totalFeedTime` is the cutting time and does not depend on the
+  rapid rate passed to `getMachiningTime`.
+- The extractor run in Fusion's read-only script mode completes without error
+  and leaves `doc.isModified` False: it performs no modification.
+- Fusion does not merge identical tools created separately; one program can
+  hold several entries for the same cutter.
+- `Tool.createFromJson` accepts a minimal made-up tool, so integration tests
+  need no real tooling.
+- The palette page built with Vite 8 loads and exchanges messages inside
+  Fusion's browser (user agent `Neutron/<version>`), including from a path
+  containing spaces.
 
 ## First milestone
 

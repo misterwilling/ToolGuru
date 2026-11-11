@@ -1,28 +1,28 @@
 """Palette command: opens the React palette and routes React ↔ Python events."""
 
 import adsk.core
+import datetime
 import json
 import os
 import traceback
 
+from toolguru_lib import extract
 from toolguru_lib.fusion360utils import event_utils as futil
 from toolguru_lib.fusion360utils import general_utils as gutil
 
 from ..ids import (
     CMD_ID, CMD_NAME, CMD_DESC,
     PALETTE_ID, PALETTE_NAME, PALETTE_WIDTH, PALETTE_HEIGHT,
-    PICK_EVENT_ID,
 )
+from . import actions
 from .state import state
 
 _icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources')
-_pick_custom_event = None
 _local_handlers: list = []
 
 
 def start(panel: adsk.core.ToolbarPanel) -> None:
     """Register the palette command button in the supplied panel."""
-    global _pick_custom_event
     app = adsk.core.Application.get()
     ui = app.userInterface
 
@@ -40,18 +40,8 @@ def start(panel: adsk.core.ToolbarPanel) -> None:
     # gives you two copies of the PANEL_ID constant that can silently drift.
     panel.controls.addCommand(cmd_def)
 
-    # Custom event for geometry picking (selectEntity() blocks — can't be
-    # called inside on_html_event because the palette is waiting on return).
-    try:
-        app.unregisterCustomEvent(PICK_EVENT_ID)
-    except:
-        pass
-    _pick_custom_event = app.registerCustomEvent(PICK_EVENT_ID)
-    futil.add_handler(_pick_custom_event, _on_pick_event)
-
 
 def stop() -> None:
-    global _pick_custom_event
     app = adsk.core.Application.get()
     ui = app.userInterface
 
@@ -63,13 +53,6 @@ def stop() -> None:
     if palette:
         palette.deleteMe()
 
-    if _pick_custom_event:
-        try:
-            app.unregisterCustomEvent(PICK_EVENT_ID)
-        except:
-            pass
-        _pick_custom_event = None
-
 
 def _on_command_created(args: adsk.core.CommandCreatedEventArgs) -> None:
     app = adsk.core.Application.get()
@@ -79,6 +62,9 @@ def _on_command_created(args: adsk.core.CommandCreatedEventArgs) -> None:
     existing = ui.palettes.itemById(PALETTE_ID)
     if existing:
         existing.deleteMe()
+
+    # A freshly opened palette should not show a message from an earlier one.
+    state.begin_action()
 
     palette = ui.palettes.add(
         PALETTE_ID,
@@ -123,8 +109,8 @@ def _on_html_event(args: adsk.core.HTMLEventArgs) -> None:
             args.returnData = json.dumps({'error': f'Unknown action: {action}'})
             return
 
-        result = handler(data)
-        args.returnData = json.dumps(result)
+        handler(data)
+        args.returnData = json.dumps(actions.view(state))
     except:
         gutil.log(f'_on_html_event error:\n{traceback.format_exc()}', force_console=True)
         args.returnData = json.dumps({'error': 'Internal error'})
@@ -135,69 +121,43 @@ def _on_palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs) -> None:
 
 
 # --- Action handlers --------------------------------------------------------
-# Add new action handlers here and register them in the dispatch table below.
+# Each handler changes state through actions.py; the caller then returns the
+# full view. Only the Fusion reads live here.
 
-def _handle_get_state(data: dict) -> dict:
-    return state.serialize()
+def _handle_get_state(data: dict) -> None:
+    pass
 
 
-def _handle_pick(data: dict) -> dict:
-    pick_request = {
-        'pick_type': data.get('type', 'face'),
-        'prompt': data.get('prompt', 'Select geometry'),
-        'slot': data.get('slot', 'default'),
-    }
-    app = adsk.core.Application.get()
-    app.fireCustomEvent(PICK_EVENT_ID, json.dumps(pick_request))
-    return state.serialize()
+def _handle_set_dataset(data: dict) -> None:
+    actions.set_dataset(state, str(data.get('dataset', '')))
+
+
+def _handle_scan_active(data: dict) -> None:
+    doc = adsk.core.Application.get().activeDocument
+    if doc is None:
+        actions.scan_failed(state, 'Open a document to scan.')
+        return
+    try:
+        document, observations = extract.scan_document(doc)
+    except extract.ScanError as error:
+        actions.scan_failed(state, str(error))
+        return
+    actions.store_scan(state, document, observations)
+
+
+def _handle_clear_trial(data: dict) -> None:
+    actions.clear_trial(state)
+
+
+def _handle_reset_main(data: dict) -> None:
+    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    actions.reset_main(state, str(data.get('confirm', '')), stamp)
 
 
 _handlers: dict = {
     'get_state': _handle_get_state,
-    'pick': _handle_pick,
+    'set_dataset': _handle_set_dataset,
+    'scan_active': _handle_scan_active,
+    'clear_trial': _handle_clear_trial,
+    'reset_main': _handle_reset_main,
 }
-
-
-# --- Pick event handler -----------------------------------------------------
-
-def _on_pick_event(args: adsk.core.CustomEventArgs) -> None:
-    try:
-        pick_request = json.loads(args.additionalInfo)
-        app = adsk.core.Application.get()
-        ui = app.userInterface
-
-        prompt = pick_request.get('prompt', 'Select geometry')
-        filter_str = _get_filter(pick_request.get('pick_type', 'face'))
-        slot = pick_request.get('slot', 'default')
-
-        try:
-            selection = ui.selectEntity(prompt, filter_str)
-            if selection and selection.entity is not None:
-                state.set_selection(slot, selection.entity.entityToken)
-        except:
-            # User pressed Escape — leave state unchanged.
-            pass
-
-        _push_state_to_palette()
-    except:
-        gutil.log(f'_on_pick_event error:\n{traceback.format_exc()}', force_console=True)
-
-
-def _get_filter(pick_type: str) -> str:
-    return {
-        'face': 'Faces',
-        'planar_face': 'PlanarFaces',
-        'edge': 'Edges',
-        'linear_edge': 'LinearEdges',
-        'vertex': 'Vertices',
-        'body': 'Bodies',
-        'occurrence': 'Occurrences',
-        'joint_origin': 'JointOrigins',
-    }.get(pick_type, 'Faces')
-
-
-def _push_state_to_palette() -> None:
-    app = adsk.core.Application.get()
-    palette = app.userInterface.palettes.itemById(PALETTE_ID)
-    if palette:
-        palette.sendInfoToHTML('state_update', json.dumps(state.serialize()))

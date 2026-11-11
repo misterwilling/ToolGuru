@@ -28,12 +28,5 @@ CMD_DESC = 'Collects tools from CAM programs, tallies usage and finds duplicates
 
 PALETTE_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_palette'
 PALETTE_NAME = ADDIN_NAME
-PALETTE_WIDTH = 420
+PALETTE_WIDTH = 760
 PALETTE_HEIGHT = 640
-
-# Custom event for geometry picking (selectEntity can't run inside the HTML
-# event handler — see ARCHITECTURE.md "Geometry Picking from Palettes").
-PICK_EVENT_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_pickEvent'
-
-# Attribute group used when tagging Fusion entities with add-in metadata.
-ATTR_GROUP = ADDIN_NAME

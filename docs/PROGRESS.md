@@ -2,30 +2,37 @@
 _Updated 2026-11-11._
 
 ## Done
-- Milestone 0: live-Fusion probes (findings in `docs/SCOPE.md`, "Verified against live Fusion").
-- Milestone 1: scoped, scaffolded, public repo created, CI green on `main`.
-- Codebase hash made identical on Windows and Linux (both copies, with tests).
-- vite 8 / vitest 5 in place; `npm audit` reports 0 findings.
+- Milestones 0 and 1: probes, scope, scaffold, public repo, CI green on `main`.
+- Milestone 2 (branch `m2-trial-scan`, not yet pushed): cutter fingerprint
+  (`toolguru_lib/cutter.py`), records, SQLite store with Trial and Main files,
+  tally, Fusion extractor, palette actions (scan active document, clear trial,
+  switch dataset, reset main with backup), Tally screen with sort and filter.
+- Checks at this commit: 77 pytest, 32 Vitest, 13 in-Fusion tests, build, `npm audit` clean.
+- Run through the add-in's own handlers on a real program: 63 operations → 11
+  cutters, rescan identical, clear empties the dataset.
 
 ## In flight
-- Nothing. Branch `m2-trial-scan` exists locally with only this file.
+- Owner has not yet clicked through the palette by hand. Push and pull request
+  for milestone 2 wait for that and for a go-ahead.
 
 ## Next step
-Milestone 2 — trial loop for a single document, on `m2-trial-scan`, merged by pull request:
-1. `toolguru_lib/` pure modules: unit normalization + cutter fingerprint, SQLite
-   store with separate Trial and Main files in the user's home directory, tally.
-2. Extractor: active document → observations (one per operation, raw tool JSON kept).
-3. Palette: dataset badge, "Scan active document", Tally table, "Clear trial data".
-4. Tests in all three layers (see `docs/SCOPE.md`, "Dev loop"); integration tests
-   build a scratch document with known tools. Re-run in Fusion, commit the results file.
-
-Later milestones: 3 folder scan (count-then-confirm, resume, skip) and the trial
-acceptance gate; 4 dedup, similarity, cutter detail, holding library; 5 compare
-a program against the Hub standard; 6 opt-in swap to standard.
+Milestone 3 — folder scan: pick a hub folder, count-then-confirm, one document
+per custom-event tick, progress, resume, skip-and-log. Then the trial acceptance
+gate on the test folder (scan, compare by eye, clear, rescan identical) before
+Main is used. Later: 4 dedup/similarity/cutter detail/holding library;
+5 compare a program against the Hub standard; 6 opt-in swap to standard.
 
 ## Open questions
-- Parameter name for a setup's stock material (not found yet).
-- The scaffolded pick event and `state.py` selections are unused by this add-in;
-  remove them when the palette is rewritten in milestone 2.
-- After editing the test runner itself, restart the add-in (or reload that one
-  module) before `run_and_save()`, or the stamped hash comes from old code.
+- Suppressed operations are skipped. Confirm that is the wanted rule.
+- Spindle speed and feed are stored as Fusion expressions (sometimes formulas);
+  resolve to numbers when the feeds/speeds view is built (milestone 4).
+- Stock material per setup: only `job_groupStockMaterial` (a group) found so far.
+- Holder identity (its own tally) is not built yet; raw tool JSON is stored, so
+  no rescan will be needed.
+
+## Working notes
+- Handlers registered from an MCP script die when that script ends. Restarting
+  the add-in over MCP reloads modules (fine for `run_and_save()`), but its
+  buttons stay dead until a manual Stop → Run in Scripts and Add-Ins.
+- In MCP scripts use `importlib.import_module('toolguru_commands.commandPalette.entry')`;
+  `import … as` fails because the package rebinds `commandPalette` to that module.
