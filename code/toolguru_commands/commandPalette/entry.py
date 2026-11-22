@@ -1,5 +1,7 @@
 """Palette command: opens the React palette and routes React ↔ Python events."""
 
+from __future__ import annotations
+
 import adsk.core
 import datetime
 import json
