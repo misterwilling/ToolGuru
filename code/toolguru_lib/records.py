@@ -1,0 +1,77 @@
+"""The two kinds of record a scan produces. Pure data, no Fusion types."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+from toolguru_lib import cutter
+
+
+@dataclass(frozen=True)
+class DocumentRecord:
+    file_id: str
+    version: int
+    name: str
+    project: str
+    date_created: int   # UNIX epoch seconds
+    date_modified: int  # UNIX epoch seconds
+
+
+@dataclass(frozen=True)
+class ObservationRecord:
+    """One operation's use of one tool."""
+    file_id: str
+    setup_name: str
+    machine: str
+    operation_name: str
+    strategy: str
+    cutter_key: str
+    tool_type: str
+    family: str
+    description: str
+    unit: str
+    tool_number: int | None
+    holder: str
+    spindle_speed: str
+    feed: str
+    preset: str
+    cutting_time_s: float | None
+    cutter_fields: str  # JSON of the normalized cutter geometry
+    tool_json: str      # raw Tool.toJson(), kept so rules can change later
+
+
+def build_observation(*, file_id: str, setup_name: str, machine: str,
+                      operation_name: str, strategy: str, tool_json: str,
+                      spindle_speed: str, feed: str, preset: str,
+                      cutting_time_s: float | None) -> ObservationRecord | None:
+    """Turn what was read from one operation into a record.
+
+    Returns None when the tool's type is out of scope (see cutter.family_of).
+    """
+    tool = json.loads(tool_json)
+    identity = cutter.identify(tool)
+    if identity is None:
+        return None
+    number = (tool.get('post-process') or {}).get('number')
+    holder = (tool.get('holder') or {}).get('description') or ''
+    return ObservationRecord(
+        file_id=file_id,
+        setup_name=setup_name,
+        machine=machine,
+        operation_name=operation_name,
+        strategy=strategy,
+        cutter_key=identity.key,
+        tool_type=identity.tool_type,
+        family=identity.family,
+        description=str(tool.get('description') or ''),
+        unit=str(tool.get('unit') or ''),
+        tool_number=number if isinstance(number, int) else None,
+        holder=str(holder),
+        spindle_speed=spindle_speed,
+        feed=feed,
+        preset=preset,
+        cutting_time_s=cutting_time_s,
+        cutter_fields=json.dumps(identity.fields, sort_keys=True),
+        tool_json=tool_json,
+    )

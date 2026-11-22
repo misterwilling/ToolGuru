@@ -416,12 +416,18 @@ def setup_adsk_modules():
     mock_adsk_fusion.JointDirections.ZAxisJointDirection = 0
     mock_adsk_fusion.JointGeometry = Mock()
 
+    # CAM reading is covered by the in-Fusion integration tests; the mock only
+    # needs to exist so modules that import adsk.cam can be imported.
+    mock_adsk_cam = Mock()
+
     mock_adsk = Mock()
     mock_adsk.core = mock_adsk_core
     mock_adsk.fusion = mock_adsk_fusion
+    mock_adsk.cam = mock_adsk_cam
 
     sys.modules['adsk'] = mock_adsk
     sys.modules['adsk.core'] = mock_adsk_core
     sys.modules['adsk.fusion'] = mock_adsk_fusion
+    sys.modules['adsk.cam'] = mock_adsk_cam
 
     return mock_adsk, mock_adsk_core, mock_adsk_fusion

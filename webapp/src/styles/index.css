@@ -6,4 +6,99 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
   color: #222;
+  background: #fff;
 }
+.app {
+  padding: 12px 14px;
+}
+header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+h1 {
+  font-size: 17px;
+  margin: 0;
+}
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 3px;
+  color: #fff;
+}
+.badge.trial { background: #b26a00; }
+.badge.main { background: #1f6f3f; }
+.muted { color: #666; }
+button {
+  font: inherit;
+  padding: 5px 10px;
+  border: 1px solid #b5b5b5;
+  border-radius: 3px;
+  background: #f3f3f3;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: #0a66c2; border-color: #0a66c2; color: #fff; }
+button.link {
+  border: none;
+  background: none;
+  color: #0a66c2;
+  padding: 0;
+  margin-left: auto;
+  text-decoration: underline;
+}
+.actions, .filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #d9a441;
+  background: #fff7e0;
+  border-radius: 3px;
+}
+.message {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 3px;
+}
+.message.error { background: #fde8e8; border: 1px solid #e5a3a3; }
+.message.notice { background: #eaf3fb; border: 1px solid #b5d2ec; }
+input, select {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #b5b5b5;
+  border-radius: 3px;
+}
+.filters input { flex: 1; min-width: 180px; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #e3e3e3;
+  white-space: nowrap;
+}
+th {
+  position: sticky;
+  top: 0;
+  background: #f3f3f3;
+  cursor: pointer;
+  user-select: none;
+}
+th.num, td.num { text-align: right; }
+tbody tr:hover { background: #f7fafd; }

@@ -1,32 +1,43 @@
 """Pure Python state for the palette command.
 
 No `adsk` imports here — this module is importable under pytest without
-mocking, which makes it the testable surface for every decision that
-doesn't strictly need the Fusion API.
-
-Store entity tokens (strings), never entity objects. Tokens survive
-across event handlers; entity objects go stale.
+mocking. The tally itself lives in the dataset file, not in memory; this
+holds only what the palette needs between events.
 """
 
 from __future__ import annotations
 
+from toolguru_lib.store import DATASETS
+
 
 class AppState:
     def __init__(self) -> None:
-        self.selections: dict[str, str] = {}  # slot name -> entity token
-        self.mode: str = 'default'
+        self.dataset: str = 'trial'   # the add-in always starts in Trial
+        self.last_scan: dict | None = None
+        self.notice: str = ''
+        self.error: str = ''
 
-    def serialize(self) -> dict:
+    def begin_action(self) -> None:
+        """Messages describe the latest action only."""
+        self.notice = ''
+        self.error = ''
+
+    def set_dataset(self, dataset: str) -> None:
+        if dataset not in DATASETS:
+            raise ValueError(f'Unknown dataset: {dataset!r}')
+        if dataset != self.dataset:
+            self.last_scan = None
+        self.dataset = dataset
+
+    def serialize(self, counts: dict, tally: list[dict]) -> dict:
         return {
-            'selections': dict(self.selections),
-            'mode': self.mode,
+            'dataset': self.dataset,
+            'counts': dict(counts),
+            'tally': tally,
+            'lastScan': dict(self.last_scan) if self.last_scan else None,
+            'notice': self.notice,
+            'error': self.error,
         }
-
-    def set_selection(self, slot: str, token: str) -> None:
-        self.selections[slot] = token
-
-    def clear_selection(self, slot: str) -> None:
-        self.selections.pop(slot, None)
 
 
 state = AppState()
