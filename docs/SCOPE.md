@@ -74,6 +74,34 @@ Three levels of identity: **cutter** (geometry, unit-normalized to mm),
 **assembly variant** (cutter + holder + stick-out), **usage context** (machine,
 operation type, speeds/feeds, tool number).
 
+## Rotating tool assemblies (RTA)
+
+The past programs used holders and stickout inconsistently, so the first sweep
+is judged by cutter. Once the standard library exists the shop works by
+assembly: a different holder or stickout is a different tool. Decisions
+(2026-11-11):
+
+- **Both counts come from the same scan.** Every observation stores the
+  holder's product ID, a fingerprint of the holder's shape, and the stickout
+  (Fusion's "length below holder") in millimetres. A "Count by: Cutter /
+  Assembly" switch on the tally chooses the view; nothing is rescanned. The
+  choice is remembered in `settings.json` beside the datasets.
+- **Same holder** means the same product ID, or the same shape. The owner
+  chose "product ID, else shape"; shape also joins holders whose IDs differ,
+  because one real program carried a single holder under three spellings of
+  its product ID. Product IDs are compared ignoring case and spacing; shapes
+  are compared to 0.01 mm after unit conversion.
+- **Same stickout** means within an adjustable tolerance, 0.5 mm (0.020 in)
+  to start; zero means an exact match. In the tally, bands start at the
+  shortest stickout so no row is wider than the tolerance. When programs are
+  compared against the standard library, the tolerance will be measured from
+  the standard assembly's stickout.
+- **Tool numbers.** Standard assemblies will carry a fixed tool number.
+  Other tools reuse numbers from a pool kept for per-job tools. The compare
+  step will flag a standard assembly under the wrong number and a
+  non-standard tool using a standard's number; numbers in the pool are not
+  checked.
+
 ## Cloud posture
 
 Uses only Fusion's own signed-in hub access through the Fusion API. No Autodesk
@@ -158,6 +186,11 @@ PC, loaded from the repo folder.
 
 - **Stock material per setup** — the parameter name is not yet known. Default
   in force: material is not recorded.
+- **Per-job tool number pool** — which numbers it covers is not yet set.
+  Default in force: tool numbers are recorded and shown, never checked.
+- **Different product IDs, same holder shape** — treated as one holder.
+  Default in force: as described under Rotating tool assemblies; revisit if
+  two genuinely different holders ever share a profile.
 - **Library organization and naming** — deferred until scan data exists.
   Default in force: none; the add-in only builds the flat holding library.
 - **Pre-production Fusion build** — the development machine runs a

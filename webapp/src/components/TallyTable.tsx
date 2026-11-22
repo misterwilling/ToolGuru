@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import type { SortKey, SortState, TallyRow } from '../types'
+import type { CountBy, SortKey, SortState, TallyRow } from '../types'
 import {
   familiesIn,
   filterTally,
   formatDate,
   formatDiameter,
   formatDuration,
+  formatStickout,
   formatToolNumbers,
+  rowKey,
   sortTally,
   toggleSort,
 } from '../utils'
@@ -22,11 +24,12 @@ const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
   { key: 'last_used', label: 'Last used', numeric: true },
 ]
 
-export function TallyTable({ rows }: { rows: TallyRow[] }) {
+export function TallyTable({ rows, countBy }: { rows: TallyRow[]; countBy: CountBy }) {
   const [sort, setSort] = useState<SortState>({ key: 'operations', direction: 'desc' })
   const [text, setText] = useState('')
   const [family, setFamily] = useState('all')
 
+  const byAssembly = countBy === 'assembly'
   const shown = sortTally(filterTally(rows, text, family), sort)
 
   return (
@@ -34,7 +37,11 @@ export function TallyTable({ rows }: { rows: TallyRow[] }) {
       <div className="filters">
         <input
           type="search"
-          placeholder="Filter by description, type or tool number"
+          placeholder={
+            byAssembly
+              ? 'Filter by description, type, holder or tool number'
+              : 'Filter by description, type or tool number'
+          }
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
@@ -44,7 +51,9 @@ export function TallyTable({ rows }: { rows: TallyRow[] }) {
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
-        <span className="muted">{shown.length} of {rows.length} cutters</span>
+        <span className="muted">
+          {shown.length} of {rows.length} {byAssembly ? 'assemblies' : 'cutters'}
+        </span>
       </div>
       <table>
         <thead>
@@ -59,13 +68,15 @@ export function TallyTable({ rows }: { rows: TallyRow[] }) {
                 {sort.key === column.key ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
+            {byAssembly && <th>Holder</th>}
+            {byAssembly && <th className="num">Stickout</th>}
             <th>Tool numbers</th>
             <th>Machines</th>
           </tr>
         </thead>
         <tbody>
           {shown.map((row) => (
-            <tr key={row.cutter_key}>
+            <tr key={rowKey(row)}>
               <td>{row.tool_type}</td>
               <td className="num">
                 {formatDiameter(row.diameter_mm, row.units)}
@@ -84,6 +95,12 @@ export function TallyTable({ rows }: { rows: TallyRow[] }) {
               </td>
               <td className="num">{formatDate(row.first_used)}</td>
               <td className="num">{formatDate(row.last_used)}</td>
+              {byAssembly && <td>{row.holder || <span className="muted">no holder</span>}</td>}
+              {byAssembly && (
+                <td className="num">
+                  {formatStickout(row.stickout_min_mm, row.stickout_max_mm, row.units)}
+                </td>
+              )}
               <td>{formatToolNumbers(row.tool_numbers)}</td>
               <td>{row.machines.join(', ')}</td>
             </tr>

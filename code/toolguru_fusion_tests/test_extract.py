@@ -8,7 +8,7 @@ from pathlib import Path
 from toolguru_lib import extract
 from toolguru_lib.records import DocumentRecord
 from toolguru_lib.store import Store, dataset_path
-from toolguru_lib.tally import build_tally
+from toolguru_lib.tally import build_assembly_tally, build_tally
 
 from toolguru_fusion_tests import helpers
 
@@ -64,6 +64,29 @@ class TestReadObservations(unittest.TestCase):
         self.assertEqual(drill.tool_number, 12)
         self.assertEqual(fields['DC'], 5.0)
         self.assertEqual(fields['NOF'], 2)
+
+    def test_holder_and_stickout_are_read(self):
+        end_mill, drill = self.observations[0], self.observations[2]
+        self.assertEqual(end_mill.holder, 'test holder')
+        self.assertEqual(end_mill.holder_product_id, 'th-100')
+        self.assertEqual(end_mill.stickout_mm, 38.1)   # LB 1.5 in
+        self.assertEqual(drill.holder_product_id, 'th-100')
+        self.assertEqual(drill.stickout_mm, 50.0)
+
+    def test_same_holder_in_inches_and_millimetres_has_one_shape(self):
+        end_mill, drill = self.observations[0], self.observations[2]
+        self.assertEqual(len(end_mill.holder_shape), 16)
+        self.assertEqual(end_mill.holder_shape, drill.holder_shape)
+
+    def test_scan_is_tallied_by_assembly_inside_fusion(self):
+        rows = [dict(vars(o), date_created=100, date_modified=200)
+                for o in self.observations]
+        tally = build_assembly_tally(rows, 0.5)
+        self.assertEqual(
+            [(t['tool_type'], t['holder'], t['stickout_min_mm'], t['operations'])
+             for t in tally],
+            [('flat end mill', 'test holder', 38.1, 2),
+             ('drill', 'test holder', 50.0, 1)])
 
     def test_same_cutter_in_separate_tool_entries_is_one_cutter(self):
         keys = [o.cutter_key for o in self.observations]

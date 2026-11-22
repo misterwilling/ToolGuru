@@ -132,6 +132,14 @@ def _handle_set_dataset(data: dict) -> None:
     actions.set_dataset(state, str(data.get('dataset', '')))
 
 
+def _handle_set_count_by(data: dict) -> None:
+    actions.set_count_by(state, str(data.get('countBy', '')))
+
+
+def _handle_set_stickout_tolerance(data: dict) -> None:
+    actions.set_stickout_tolerance(state, data.get('toleranceMm'))
+
+
 def _handle_scan_active(data: dict) -> None:
     doc = adsk.core.Application.get().activeDocument
     if doc is None:
@@ -157,6 +165,8 @@ def _handle_reset_main(data: dict) -> None:
 _handlers: dict = {
     'get_state': _handle_get_state,
     'set_dataset': _handle_set_dataset,
+    'set_count_by': _handle_set_count_by,
+    'set_stickout_tolerance': _handle_set_stickout_tolerance,
     'scan_active': _handle_scan_active,
     'clear_trial': _handle_clear_trial,
     'reset_main': _handle_reset_main,

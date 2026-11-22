@@ -7,6 +7,7 @@ holds only what the palette needs between events.
 
 from __future__ import annotations
 
+from toolguru_lib.settings import Settings
 from toolguru_lib.store import DATASETS
 
 
@@ -29,10 +30,13 @@ class AppState:
             self.last_scan = None
         self.dataset = dataset
 
-    def serialize(self, counts: dict, tally: list[dict]) -> dict:
+    def serialize(self, counts: dict, tally: list[dict],
+                  settings: Settings) -> dict:
         return {
             'dataset': self.dataset,
             'counts': dict(counts),
+            'countBy': settings.count_by,
+            'stickoutToleranceMm': settings.stickout_tolerance_mm,
             'tally': tally,
             'lastScan': dict(self.last_scan) if self.last_scan else None,
             'notice': self.notice,

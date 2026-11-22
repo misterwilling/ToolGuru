@@ -12,11 +12,30 @@ import adsk.cam
 import adsk.core
 import adsk.fusion
 
+# One made-up holder, written out in inches and again in millimetres.
+HOLDER_INCH = {
+    'type': 'holder', 'unit': 'inches', 'description': 'test holder',
+    'product-id': 'TH-100', 'vendor': 'Example Tooling', 'gaugeLength': 3.0,
+    'segments': [
+        {'height': 1.0, 'lower-diameter': 1.0, 'upper-diameter': 1.25},
+        {'height': 2.0, 'lower-diameter': 1.75, 'upper-diameter': 1.75},
+    ],
+}
+HOLDER_MM = {
+    'type': 'holder', 'unit': 'millimeters', 'description': 'test holder',
+    'product-id': 'TH-100', 'vendor': 'Example Tooling', 'gaugeLength': 76.2,
+    'segments': [
+        {'height': 25.4, 'lower-diameter': 25.4, 'upper-diameter': 31.75},
+        {'height': 50.8, 'lower-diameter': 44.45, 'upper-diameter': 44.45},
+    ],
+}
+
 END_MILL = {
     'type': 'flat end mill', 'unit': 'inches', 'BMC': 'carbide',
     'description': 'test half inch end mill',
     'geometry': {'DC': 0.5, 'NOF': 3, 'LCF': 1.25, 'shoulder-length': 1.25,
                  'OAL': 3.0, 'SFDM': 0.5, 'RE': 0, 'TA': 0, 'LB': 1.5},
+    'holder': HOLDER_INCH,
     'post-process': {'number': 7},
 }
 
@@ -25,6 +44,7 @@ DRILL = {
     'description': 'test 5 mm drill',
     'geometry': {'DC': 5.0, 'NOF': 2, 'LCF': 40.0, 'shoulder-length': 40.0,
                  'OAL': 90.0, 'SFDM': 5.0, 'SIG': 118, 'LB': 50.0},
+    'holder': HOLDER_MM,
     'post-process': {'number': 12},
 }
 

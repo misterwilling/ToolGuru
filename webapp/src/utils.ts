@@ -1,7 +1,7 @@
 // Pure utility functions — no React, no DOM, no bridge. Everything that
 // doesn't need a browser goes here so it's directly testable with Vitest.
 
-import type { AppState, Counts, Dataset, SortKey, SortState, TallyRow } from './types'
+import type { AppState, Counts, Dataset, LengthUnit, SortKey, SortState, TallyRow } from './types'
 
 const MM_PER_INCH = 25.4
 const TEXT_KEYS: SortKey[] = ['tool_type', 'description']
@@ -27,6 +27,42 @@ export function formatDiameter(mm: number | null, units: string[]): string {
   const metric = `${mm.toFixed(3)} mm`
   if (!units.includes('inches')) return metric
   return `${metric} / ${(mm / MM_PER_INCH).toFixed(4)} in`
+}
+
+/** One row per cutter, or per assembly when counting by assembly. */
+export function rowKey(row: TallyRow): string {
+  return row.assembly_key ?? row.cutter_key
+}
+
+function lengthText(mm: number, inches: boolean): string {
+  return inches ? `${mm.toFixed(3)} mm / ${(mm / MM_PER_INCH).toFixed(4)} in` : `${mm.toFixed(3)} mm`
+}
+
+/** A single stickout, or the range an assembly row covers. */
+export function formatStickout(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  units: string[],
+): string {
+  if (min === null || min === undefined || max === null || max === undefined) return '—'
+  const inches = units.includes('inches')
+  if (min === max) return lengthText(min, inches)
+  const metric = `${min.toFixed(3)}–${max.toFixed(3)} mm`
+  if (!inches) return metric
+  return `${metric} / ${(min / MM_PER_INCH).toFixed(4)}–${(max / MM_PER_INCH).toFixed(4)} in`
+}
+
+export function formatTolerance(mm: number): string {
+  return lengthText(mm, true)
+}
+
+/** What the user typed as a tolerance, in millimetres; null when it is not zero or more. */
+export function toleranceToMm(text: string, unit: LengthUnit): number | null {
+  if (text.trim() === '') return null
+  const value = Number(text)
+  if (!Number.isFinite(value) || value < 0) return null
+  const mm = unit === 'in' ? value * MM_PER_INCH : value
+  return Math.round(mm * 1000) / 1000
 }
 
 export function formatDate(epochSeconds: number): string {
@@ -78,11 +114,11 @@ export function sortTally(rows: TallyRow[], sort: SortState): TallyRow[] {
       order = ((left as number | null) ?? -Infinity) - ((right as number | null) ?? -Infinity)
     }
     if (order !== 0 && !Number.isNaN(order)) return sign * order
-    return a.cutter_key.localeCompare(b.cutter_key)
+    return rowKey(a).localeCompare(rowKey(b))
   })
 }
 
-/** `family` is a family name or 'all'. Text matches description, type, or a tool number (7 or T7). */
+/** `family` is a family name or 'all'. Text matches description, type, holder, or a tool number (7 or T7). */
 export function filterTally(rows: TallyRow[], text: string, family: string): TallyRow[] {
   const needle = text.trim().toLowerCase()
   return rows.filter((row) => {
@@ -91,6 +127,7 @@ export function filterTally(rows: TallyRow[], text: string, family: string): Tal
     const haystack = [
       row.description,
       row.tool_type,
+      row.holder ?? '',
       ...row.tool_numbers.flatMap((n) => [String(n), `t${n}`]),
     ]
     return haystack.some((value) => value.toLowerCase().includes(needle))

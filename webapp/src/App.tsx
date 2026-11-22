@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { sendToFusion } from './api/fusionBridge'
 import { TallyTable } from './components/TallyTable'
-import type { AppState, Dataset } from './types'
-import { countsSummary, datasetBadge, isAppState } from './utils'
+import type { AppState, CountBy, Dataset, LengthUnit } from './types'
+import { countsSummary, datasetBadge, formatTolerance, isAppState, toleranceToMm } from './utils'
 
 type Confirm = 'none' | 'clear_trial' | 'reset_main' | 'switch_main'
 
@@ -11,6 +11,8 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<Confirm>('none')
   const [resetWord, setResetWord] = useState('')
+  const [toleranceText, setToleranceText] = useState('')
+  const [toleranceUnit, setToleranceUnit] = useState<LengthUnit>('in')
   const [bridgeError, setBridgeError] = useState('')
 
   async function run(action: string, data?: unknown): Promise<void> {
@@ -37,6 +39,16 @@ export function App() {
 
   const badge = datasetBadge(state.dataset)
   const other: Dataset = state.dataset === 'trial' ? 'main' : 'trial'
+  const toleranceMm = toleranceToMm(toleranceText, toleranceUnit)
+  const countByButton = (value: CountBy, label: string) => (
+    <button
+      className={state.countBy === value ? 'selected' : undefined}
+      disabled={busy || state.countBy === value}
+      onClick={() => run('set_count_by', { countBy: value })}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div className="app">
@@ -61,6 +73,46 @@ export function App() {
           <button disabled={busy} onClick={() => setConfirm('clear_trial')}>Clear trial data</button>
         ) : (
           <button disabled={busy} onClick={() => setConfirm('reset_main')}>Reset main data</button>
+        )}
+      </div>
+
+      <div className="actions">
+        <span>Count by:</span>
+        <span className="segmented">
+          {countByButton('cutter', 'Cutter')}
+          {countByButton('assembly', 'Assembly')}
+        </span>
+        {state.countBy === 'cutter' ? (
+          <span className="muted">The same cutter is one tool, whatever holder it was in.</span>
+        ) : (
+          <>
+            <span className="muted">
+              A different holder or stickout is a different tool. Stickouts within{' '}
+              {formatTolerance(state.stickoutToleranceMm)} match.
+            </span>
+            <input
+              className="short"
+              placeholder="New tolerance"
+              value={toleranceText}
+              onChange={(event) => setToleranceText(event.target.value)}
+            />
+            <select
+              value={toleranceUnit}
+              onChange={(event) => setToleranceUnit(event.target.value as LengthUnit)}
+            >
+              <option value="in">in</option>
+              <option value="mm">mm</option>
+            </select>
+            <button
+              disabled={busy || toleranceMm === null}
+              onClick={() => {
+                setToleranceText('')
+                void run('set_stickout_tolerance', { toleranceMm })
+              }}
+            >
+              Set tolerance
+            </button>
+          </>
         )}
       </div>
 
@@ -108,7 +160,7 @@ export function App() {
           No tools yet. Open a program and click “Scan active document”.
         </p>
       ) : (
-        <TallyTable rows={state.tally} />
+        <TallyTable rows={state.tally} countBy={state.countBy} />
       )}
     </div>
   )
