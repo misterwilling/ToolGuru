@@ -17,6 +17,14 @@ class AppState:
         self.last_scan: dict | None = None
         self.notice: str = ''
         self.error: str = ''
+        # Folder scan. The queue itself is in the dataset file; these are only
+        # what the palette is showing and whether the scan loop is turning.
+        self.browser: dict | None = None        # the folder picker's listing
+        self.proposed_scan: dict | None = None  # counted, waiting for a yes
+        self.scan_running: bool = False
+        # True while one program is open and being read. Fusion handles clicks
+        # while it opens a document, so an action can arrive in the middle.
+        self.scan_busy: bool = False
 
     def begin_action(self) -> None:
         """Messages describe the latest action only."""
@@ -30,8 +38,10 @@ class AppState:
             self.last_scan = None
         self.dataset = dataset
 
-    def serialize(self, counts: dict, tally: list[dict],
-                  settings: Settings) -> dict:
+    def serialize(self, counts: dict, tally: list[dict], settings: Settings,
+                  job: dict | None = None) -> dict:
+        """`job` is the dataset's folder scan (see Store.job), if any."""
+        proposed = self.proposed_scan
         return {
             'dataset': self.dataset,
             'counts': dict(counts),
@@ -39,6 +49,11 @@ class AppState:
             'stickoutToleranceMm': settings.stickout_tolerance_mm,
             'tally': tally,
             'lastScan': dict(self.last_scan) if self.last_scan else None,
+            'browser': self.browser,
+            'confirmScan': ({'folder': proposed['folder'],
+                             'count': len(proposed['files'])}
+                            if proposed else None),
+            'scan': dict(job, running=self.scan_running) if job else None,
             'notice': self.notice,
             'error': self.error,
         }

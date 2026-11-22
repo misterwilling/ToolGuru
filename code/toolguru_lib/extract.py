@@ -10,7 +10,7 @@ import adsk.cam
 import adsk.core
 
 from toolguru_lib.records import (
-    DocumentRecord, ObservationRecord, build_observation)
+    DocumentRecord, ObservationRecord, ScanError, build_observation)
 
 # getMachiningTime needs a feed scale (%), a rapid rate (cm/s) and a tool
 # change time (s). Only the feed time is used, which does not depend on the
@@ -18,10 +18,6 @@ from toolguru_lib.records import (
 _FEED_SCALE_PERCENT = 100.0
 _RAPID_CM_PER_S = 10.0
 _TOOL_CHANGE_S = 0.0
-
-
-class ScanError(Exception):
-    """A document cannot be scanned. The message is written for the user."""
 
 
 def cam_product(doc: adsk.core.Document) -> adsk.cam.CAM:
@@ -47,9 +43,24 @@ def document_record(doc: adsk.core.Document) -> DocumentRecord:
         version=data_file.versionNumber,
         name=data_file.name,
         project=data_file.parentProject.name,
-        date_created=data_file.dateCreated,
+        date_created=first_saved(data_file),
         date_modified=data_file.dateModified,
     )
+
+
+def first_saved(data_file: adsk.core.DataFile) -> int:
+    """When the file was first saved, in UNIX epoch seconds.
+
+    A file's own `dateCreated` is the date of its latest version, so the
+    oldest version is asked instead. Fusion lists versions in no useful
+    order."""
+    oldest = data_file
+    versions = data_file.versions
+    for i in range(versions.count):
+        version = versions.item(i)
+        if version.versionNumber < oldest.versionNumber:
+            oldest = version
+    return oldest.dateCreated
 
 
 def read_observations(cam: adsk.cam.CAM, file_id: str) -> list[ObservationRecord]:

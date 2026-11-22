@@ -41,6 +41,42 @@ export interface LastScan {
   operationsWithoutTime: number
 }
 
+export interface FolderEntry {
+  id: string
+  name: string
+}
+
+/** One level of the hub in the folder picker. An empty folderId is the list of projects. */
+export interface Browser {
+  folderId: string
+  path: FolderEntry[]
+  folders: FolderEntry[]
+  programs: number // Fusion designs directly inside this folder
+}
+
+export interface ConfirmScan {
+  folder: string
+  count: number
+}
+
+export interface ScanProblem {
+  name: string
+  status: 'skipped' | 'failed'
+  message: string
+}
+
+/** A folder scan's progress. total = pending + scanned + skipped + failed. */
+export interface ScanJob {
+  folder: string
+  total: number
+  pending: number
+  scanned: number
+  skipped: number
+  failed: number
+  problems: ScanProblem[]
+  running: boolean
+}
+
 export interface AppState {
   dataset: Dataset
   counts: Counts
@@ -48,6 +84,9 @@ export interface AppState {
   stickoutToleranceMm: number
   tally: TallyRow[]
   lastScan: LastScan | null
+  browser: Browser | null
+  confirmScan: ConfirmScan | null
+  scan: ScanJob | null
   notice: string
   error: string
 }

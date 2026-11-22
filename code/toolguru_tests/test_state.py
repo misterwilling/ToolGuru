@@ -23,7 +23,8 @@ class TestAppState:
         assert AppState().serialize(EMPTY, [], DEFAULTS) == {
             'dataset': 'trial', 'counts': EMPTY,
             'countBy': 'cutter', 'stickoutToleranceMm': 0.5, 'tally': [],
-            'lastScan': None, 'notice': '', 'error': '',
+            'lastScan': None, 'browser': None, 'confirmScan': None,
+            'scan': None, 'notice': '', 'error': '',
         }
 
     def test_unknown_dataset_is_rejected_and_state_is_unchanged(self):
@@ -51,7 +52,8 @@ class TestActions:
         assert actions.view(AppState(), tmp_path) == {
             'dataset': 'trial', 'counts': EMPTY,
             'countBy': 'cutter', 'stickoutToleranceMm': 0.5, 'tally': [],
-            'lastScan': None, 'notice': '', 'error': '',
+            'lastScan': None, 'browser': None, 'confirmScan': None,
+            'scan': None, 'notice': '', 'error': '',
         }
 
     def test_store_scan_reports_the_scan_and_fills_the_tally(self, tmp_path):

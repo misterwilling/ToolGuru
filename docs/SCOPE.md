@@ -163,6 +163,25 @@ Three test layers:
   Fusion's browser (user agent `Neutron/<version>`), including from a path
   containing spaces.
 
+### Verified against live Fusion (folder scan, 2026-11-21)
+
+- `Data.findFolderById` and `Data.findFileById` find a folder or file by the
+  `id` the listing gave. For an id that does not exist they raise
+  `RuntimeError`; they do not return None.
+- `DataFile.fileExtension` is `f3d` for a Fusion design.
+- A custom event fired from inside its own handler is delivered later, so one
+  program per firing keeps Fusion responsive between programs.
+- Fusion handles other events while `documents.open` is working. A palette
+  click can therefore arrive in the middle of a scan step.
+- Opening a program can open its referenced documents too; closing the
+  program without saving closes them again and restores the active document.
+- `Application.unregisterCustomEvent` for an id that was never registered
+  returns without raising.
+- `DataFile.dateCreated` is the date of the file's latest version, the same
+  as `dateModified`; it is not the date the file was first made. Each entry
+  of `dataFile.versions` carries its own `versionNumber` and `dateCreated`,
+  so the first version's date is the real creation date (2026-11-22).
+
 ## First milestone
 
 Trial dataset, "Scan active document", Tally screen, and "Clear trial data".

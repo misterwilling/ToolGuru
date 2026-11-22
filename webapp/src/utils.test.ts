@@ -107,6 +107,19 @@ describe('countsSummary', () => {
       '0 programs, 0 operations, 0 cutters',
     )
   })
+  it('counts assemblies instead of cutters when counting by assembly', () => {
+    expect(countsSummary({ documents: 3, observations: 117, cutters: 24 }, 26)).toBe(
+      '3 programs, 117 operations, 26 assemblies',
+    )
+  })
+  it('uses the singular for one assembly and handles none', () => {
+    expect(countsSummary({ documents: 1, observations: 1, cutters: 1 }, 1)).toBe(
+      '1 program, 1 operation, 1 assembly',
+    )
+    expect(countsSummary({ documents: 0, observations: 0, cutters: 0 }, 0)).toBe(
+      '0 programs, 0 operations, 0 assemblies',
+    )
+  })
 })
 
 describe('toggleSort', () => {

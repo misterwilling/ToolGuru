@@ -1,54 +1,115 @@
 # Progress
-_Updated 2026-11-11._
+_Updated 2026-11-22._
 
 ## Done
 - Milestones 0 and 1: probes, scope, scaffold, public repo, CI green on `main`.
-- Milestone 2 (branch `m2-trial-scan`, not yet pushed): cutter fingerprint
-  (`toolguru_lib/cutter.py`), records, SQLite store with Trial and Main files,
-  tally, Fusion extractor, palette actions (scan active document, clear trial,
-  switch dataset, reset main with backup), Tally screen with sort and filter.
-  The owner has clicked through it: scan, tally and clear work.
+- Milestone 2 (branch `m2-trial-scan`, not yet pushed): cutter fingerprint,
+  records, SQLite store with Trial and Main files, tally, Fusion extractor,
+  palette actions (scan active document, clear trial, switch dataset, reset
+  main with backup), Tally screen with sort and filter.
 - Assembly counting (branch `rta-assembly-view`, on top of `m2-trial-scan`, not
-  yet pushed): holder product ID, holder shape and stickout stored per
-  observation (`toolguru_lib/assembly.py`); older dataset files gain the
-  columns on open; `build_assembly_tally`; `settings.json` beside the datasets
-  (`toolguru_lib/settings.py`); "Count by: Cutter / Assembly" switch and
-  stickout tolerance in the palette. Decisions are in `docs/SCOPE.md` under
-  "Rotating tool assemblies (RTA)".
-- Checks at this commit: 125 pytest, 46 Vitest, 16 in-Fusion tests, build.
-- Read-only run on a real program: 63 operations → 11 cutters → 11 assemblies;
-  one holder entered under three spellings of its product ID came out as one
-  holder.
+  yet pushed): holder and stickout per observation, `build_assembly_tally`,
+  `settings.json`, "Count by: Cutter / Assembly" switch. Decisions are in
+  `docs/SCOPE.md` under "Rotating tool assemblies (RTA)".
+- Milestone 3, folder scan (branch `m3-folder-scan`, on top of
+  `rta-assembly-view`, committed, not yet pushed):
+  - `toolguru_lib/hub.py` lists projects and folders, collects the Fusion
+    designs in a folder (subfolders optional), and opens one file, reads it and
+    closes it without saving. A file the user already has open is left open.
+  - The queue (`scan_job`, `scan_items`) lives in the dataset file
+    (`toolguru_lib/store.py`), so a scan can be resumed after the palette, the
+    add-in or Fusion was closed. Clearing a dataset clears its queue.
+  - `actions.py`: count-then-confirm (`propose_scan`, `start_scan`), one
+    program per `scan_step`, `stop_scan`, `resume_scan`, `dismiss_scan`. A
+    design without Manufacturing data or without tooled operations is skipped;
+    a program that raises is marked failed and the scan goes on.
+  - `entry.py` turns the steps from a custom event and pushes the state to the
+    palette after each program. Palette: "Scan a folder…", folder picker,
+    confirmation with the count, progress bar, Stop / Resume / Dismiss, and a
+    list of skipped and failed files (`webapp/src/components/ScanPanel.tsx`).
+  - Also on this branch: the summary line counts assemblies when counting by
+    assembly.
+- Checked in live Fusion on the three-program test folder: three scans of the
+  folder each ended 3 scanned, 0 skipped, 0 failed, with the tally unchanged
+  (3 programs, 117 operations, 24 cutters), every opened document closed and
+  the active document restored. Stop before the first program, Stop during
+  the last program, a double Resume, and an action sent while a program was
+  open all behaved as the unit tests describe.
 
 ## In flight
-- Owner has not yet seen the Count by switch in the palette.
-- Two local branches wait for a go-ahead to push: `m2-trial-scan` first, then
-  `rta-assembly-view`.
+- Trial acceptance gate: the owner ran it on the test folder in the palette and
+  reported it good on 2026-11-21. Main may now be used.
+- Main sweep, first folder (2026-11-21): 39 programs scanned and 3 skipped,
+  then Fusion itself crashed while program 43 of 68 was open. Fusion's log
+  shows an access violation in its own CAM loader (`Iron::Parser::Table`,
+  reached from `IronDocumentEntity::loadDocumentData`) at the moment the scan
+  asked the document for its CAM product. The queue had the program marked
+  `opening`; Resume marked it failed and the folder finished: 63 scanned,
+  4 skipped (no Manufacturing data), 1 failed.
+- That crash was not reproduced. The owner opened the same version of the
+  program by hand in a fresh Fusion session; its Manufacturing data loaded
+  without trouble, and "Scan active document" then read it. Main now holds 64
+  programs and 1856 operations. Fusion's log shows nothing that sets the
+  crashing load apart from the 39 that worked: in every scan the CAM load
+  starts in the same second the document opens, and the geometry-restore
+  errors in the log appear on every open. Treated as a one-off Fusion crash
+  unless it happens again. The exact case can no longer be repeated as it
+  was: the hand session saved the program, which made a new version.
+- "First used" date fix (2026-11-22, committed on `m3-folder-scan`):
+  `DataFile.dateCreated` is the date of the latest version, so every stored
+  created date was really the last save. `extract.first_saved` now reads the
+  oldest entry of `dataFile.versions`; it costs about 0.4 s per program.
+  Unit tests are in `toolguru_tests/test_document_record.py`, and a live-hub
+  test was added to `toolguru_fusion_tests/test_folder_scan.py`. Run
+  read-only against the 64 programs in Main, it put the first save more than
+  a day before the stored date for 44 of them. In-Fusion tests re-run: 22 of
+  22 pass, and the live-hub test ran rather than skipped. **Still to do:**
+  rescan the first Main folder so the dates already stored are refreshed.
+  The test runner counts a skipped test as passed and does not list skips.
+- Three local branches wait for a go-ahead to push, in order: `m2-trial-scan`,
+  `rta-assembly-view`, `m3-folder-scan`.
 
 ## Next step
-Milestone 3 — folder scan: pick a hub folder, count-then-confirm, one document
-per custom-event tick, progress, resume, skip-and-log. Then the trial acceptance
-gate on the test folder (scan, compare by eye, clear, rescan identical) before
-Main is used. Later: 4 dedup/similarity/cutter detail/holding library;
-5 compare a program against the Hub standard (by assembly, with the tool-number
-check); 6 opt-in swap to standard.
+Main sweep, one project folder first. Then milestone 4: dedup, similarity,
+cutter detail, holding library. Later: 5 compare a program against the Hub
+standard (by assembly, with the tool-number check); 6 opt-in swap to standard.
+
+A separate Mastercam 2022 harvester is being probed outside this repo. If it
+goes ahead, this add-in gains only a generic "Import scan file"; it stays
+Fusion-only.
 
 ## Open questions
+- Re-saving an old program today moves its "last used" to today. One program
+  in Main is in that state. No rule chosen yet.
 - Suppressed operations are skipped. Confirm that is the wanted rule.
 - Spindle speed and feed are stored as Fusion expressions (sometimes formulas);
   resolve to numbers when the feeds/speeds view is built (milestone 4).
 - Stock material per setup: only `job_groupStockMaterial` (a group) found so far.
 - Which tool numbers form the per-job pool (needed for milestone 5).
-- `actions.view` rebuilds the whole tally on every palette action; revisit for
-  speed once the Main dataset is large.
+- `actions.view` rebuilds the whole tally on every palette action and after
+  every scanned program; revisit for speed once the Main dataset is large.
+- A folder scan re-opens every design even when its version was scanned
+  before. Fine for one sweep per folder; add "skip unchanged" if folders get
+  rescanned often.
+- Counting a folder with subfolders asks the hub once per folder (about a
+  second each) and blocks Fusion while it runs. Not yet tried on a large
+  project.
+- Nothing has been tried yet on a design with out-of-date references or one
+  that Fusion wants to upgrade on open; such a file may raise a dialog.
 
 ## Working notes
 - Handlers registered from an MCP script die when that script ends. Never
   restart the add-in over MCP by calling the launcher's `stop()`/`run()`: the
   button and palette go dead. Restart it through Fusion's own object instead —
-  find ToolGuru in `app.scripts`, then `stop()` and `run(False)`. `run(False)`
-  starts the add-in after the script returns, so its handlers stay alive
-  (checked: `commandDefinition.execute()` then opens the palette and the page
-  gets its state).
+  find ToolGuru in `app.scripts`, then `stop()` and `run(False)`.
 - In MCP scripts use `importlib.import_module('toolguru_commands.commandPalette.entry')`;
   `import … as` fails because the package rebinds `commandPalette` to that module.
+- To drive a folder scan over MCP, call the handlers in `entry.py`
+  (`_handle_browse_folder`, `_handle_count_folder`, `_handle_start_folder_scan`)
+  and return; the steps run from the custom event afterwards. Poll with a
+  second, read-only script.
+- Fusion runs other events while `documents.open` is working: an MCP script or
+  a palette click can arrive in the middle of a scan step. `state.scan_busy`
+  exists for that.
+- The hub tests in `toolguru_fusion_tests/test_folder_scan.py` need Fusion
+  signed in and online; they list projects and open nothing.
