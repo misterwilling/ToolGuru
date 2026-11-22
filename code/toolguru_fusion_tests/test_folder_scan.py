@@ -63,6 +63,29 @@ class TestHubBrowse(unittest.TestCase):
                          'This file is no longer in your hub.')
         self.assertEqual(self.app.documents.count, before)
 
+    def test_first_saved_is_the_oldest_version_not_the_files_own_date(self):
+        data_file = self._a_design_saved_more_than_once()
+        if data_file is None:
+            self.skipTest('No design with several versions at the top of a project.')
+        versions = data_file.versions
+        dates = {versions.item(i).versionNumber: versions.item(i).dateCreated
+                 for i in range(versions.count)}
+
+        self.assertEqual(extract.first_saved(data_file), dates[min(dates)])
+        self.assertEqual(data_file.dateCreated, dates[max(dates)])
+        self.assertLess(extract.first_saved(data_file), data_file.dateCreated)
+
+    def _a_design_saved_more_than_once(self):
+        projects = self.data.dataProjects
+        for p in range(projects.count):
+            files = projects.item(p).rootFolder.dataFiles
+            for f in range(files.count):
+                data_file = files.item(f)
+                if (data_file.fileExtension == hub.PROGRAM_EXTENSION
+                        and data_file.versionNumber > 1):
+                    return data_file
+        return None
+
 
 class TestScanSteps(unittest.TestCase):
     """The scan loop's step, reading a real document into a real dataset

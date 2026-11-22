@@ -12,7 +12,7 @@ _Updated 2026-11-22._
   `settings.json`, "Count by: Cutter / Assembly" switch. Decisions are in
   `docs/SCOPE.md` under "Rotating tool assemblies (RTA)".
 - Milestone 3, folder scan (branch `m3-folder-scan`, on top of
-  `rta-assembly-view`, not yet committed):
+  `rta-assembly-view`, committed, not yet pushed):
   - `toolguru_lib/hub.py` lists projects and folders, collects the Fusion
     designs in a folder (subfolders optional), and opens one file, reads it and
     closes it without saving. A file the user already has open is left open.
@@ -55,6 +55,17 @@ _Updated 2026-11-22._
   errors in the log appear on every open. Treated as a one-off Fusion crash
   unless it happens again. The exact case can no longer be repeated as it
   was: the hand session saved the program, which made a new version.
+- "First used" date fix (2026-11-22, committed on `m3-folder-scan`):
+  `DataFile.dateCreated` is the date of the latest version, so every stored
+  created date was really the last save. `extract.first_saved` now reads the
+  oldest entry of `dataFile.versions`; it costs about 0.4 s per program.
+  Unit tests are in `toolguru_tests/test_document_record.py`, and a live-hub
+  test was added to `toolguru_fusion_tests/test_folder_scan.py`. Run
+  read-only against the 64 programs in Main, it put the first save more than
+  a day before the stored date for 44 of them. In-Fusion tests re-run: 22 of
+  22 pass, and the live-hub test ran rather than skipped. **Still to do:**
+  rescan the first Main folder so the dates already stored are refreshed.
+  The test runner counts a skipped test as passed and does not list skips.
 - Three local branches wait for a go-ahead to push, in order: `m2-trial-scan`,
   `rta-assembly-view`, `m3-folder-scan`.
 
@@ -68,13 +79,8 @@ goes ahead, this add-in gains only a generic "Import scan file"; it stays
 Fusion-only.
 
 ## Open questions
-- **Dates are wrong for "first used".** `DataFile.dateCreated` is the date of
-  the latest version, not of the first (checked on four programs,
-  2026-11-22), so a program's stored created and modified dates are both its
-  last save. The first version's date is on `dataFile.versions` (the entry
-  with `versionNumber` 1). Fixing it means reading that date in the scan and
-  rescanning what is already in Main. Also: re-saving an old program today
-  moves its "last used" to today; one program in Main is in that state.
+- Re-saving an old program today moves its "last used" to today. One program
+  in Main is in that state. No rule chosen yet.
 - Suppressed operations are skipped. Confirm that is the wanted rule.
 - Spindle speed and feed are stored as Fusion expressions (sometimes formulas);
   resolve to numbers when the feeds/speeds view is built (milestone 4).

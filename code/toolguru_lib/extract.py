@@ -43,9 +43,24 @@ def document_record(doc: adsk.core.Document) -> DocumentRecord:
         version=data_file.versionNumber,
         name=data_file.name,
         project=data_file.parentProject.name,
-        date_created=data_file.dateCreated,
+        date_created=first_saved(data_file),
         date_modified=data_file.dateModified,
     )
+
+
+def first_saved(data_file: adsk.core.DataFile) -> int:
+    """When the file was first saved, in UNIX epoch seconds.
+
+    A file's own `dateCreated` is the date of its latest version, so the
+    oldest version is asked instead. Fusion lists versions in no useful
+    order."""
+    oldest = data_file
+    versions = data_file.versions
+    for i in range(versions.count):
+        version = versions.item(i)
+        if version.versionNumber < oldest.versionNumber:
+            oldest = version
+    return oldest.dateCreated
 
 
 def read_observations(cam: adsk.cam.CAM, file_id: str) -> list[ObservationRecord]:
