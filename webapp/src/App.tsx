@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { sendToFusion } from './api/fusionBridge'
+import { onFusionPush, sendToFusion } from './api/fusionBridge'
+import { ScanPanel } from './components/ScanPanel'
 import { TallyTable } from './components/TallyTable'
 import type { AppState, CountBy, Dataset, LengthUnit } from './types'
 import { countsSummary, datasetBadge, formatTolerance, isAppState, toleranceToMm } from './utils'
@@ -30,6 +31,10 @@ export function App() {
   }
 
   useEffect(() => {
+    // Python pushes the state after each program of a folder scan.
+    onFusionPush((action, data) => {
+      if (action === 'state' && isAppState(data)) setState(data)
+    })
     void run('get_state')
   }, [])
 
@@ -38,8 +43,13 @@ export function App() {
   }
 
   const badge = datasetBadge(state.dataset)
+  const scanning = state.scan?.running === true
+  // While a scan runs, only Stop works. A paused scan must be resumed or
+  // dismissed before another folder is picked.
+  const locked = busy || scanning
   const other: Dataset = state.dataset === 'trial' ? 'main' : 'trial'
   const toleranceMm = toleranceToMm(toleranceText, toleranceUnit)
+  const summary = countsSummary(state.counts, state.countBy === 'assembly' ? state.tally.length : undefined)
   const countByButton = (value: CountBy, label: string) => (
     <button
       className={state.countBy === value ? 'selected' : undefined}
@@ -55,10 +65,10 @@ export function App() {
       <header>
         <h1>ToolGuru</h1>
         <span className={`badge ${badge.tone}`}>{badge.label}</span>
-        <span className="muted">{countsSummary(state.counts)}</span>
+        <span className="muted">{summary}</span>
         <button
           className="link"
-          disabled={busy}
+          disabled={locked}
           onClick={() => (other === 'main' ? setConfirm('switch_main') : run('set_dataset', { dataset: 'trial' }))}
         >
           Switch to {other} data
@@ -66,15 +76,23 @@ export function App() {
       </header>
 
       <div className="actions">
-        <button className="primary" disabled={busy} onClick={() => run('scan_active')}>
+        <button className="primary" disabled={locked} onClick={() => run('scan_active')}>
           {busy ? 'Working…' : 'Scan active document'}
         </button>
+        <button
+          disabled={locked || (state.scan?.pending ?? 0) > 0}
+          onClick={() => run('browse_folder', { folderId: '' })}
+        >
+          Scan a folder…
+        </button>
         {state.dataset === 'trial' ? (
-          <button disabled={busy} onClick={() => setConfirm('clear_trial')}>Clear trial data</button>
+          <button disabled={locked} onClick={() => setConfirm('clear_trial')}>Clear trial data</button>
         ) : (
-          <button disabled={busy} onClick={() => setConfirm('reset_main')}>Reset main data</button>
+          <button disabled={locked} onClick={() => setConfirm('reset_main')}>Reset main data</button>
         )}
       </div>
+
+      <ScanPanel state={state} busy={busy} run={run} />
 
       <div className="actions">
         <span>Count by:</span>
@@ -125,14 +143,14 @@ export function App() {
       )}
       {confirm === 'clear_trial' && (
         <div className="confirm">
-          Remove {countsSummary(state.counts)} from the trial data? Main data is not touched.
+          Remove {summary} from the trial data? Main data is not touched.
           <button onClick={() => run('clear_trial')}>Clear trial data</button>
           <button onClick={() => setConfirm('none')}>Cancel</button>
         </div>
       )}
       {confirm === 'reset_main' && (
         <div className="confirm">
-          Remove {countsSummary(state.counts)} from the MAIN data? A backup copy is saved first.
+          Remove {summary} from the MAIN data? A backup copy is saved first.
           Type RESET to continue:
           <input value={resetWord} onChange={(event) => setResetWord(event.target.value)} />
           <button disabled={resetWord !== 'RESET'} onClick={() => run('reset_main', { confirm: resetWord })}>
@@ -157,7 +175,7 @@ export function App() {
 
       {state.tally.length === 0 ? (
         <p className="muted">
-          No tools yet. Open a program and click “Scan active document”.
+          No tools yet. Open a program and click “Scan active document”, or scan a folder.
         </p>
       ) : (
         <TallyTable rows={state.tally} countBy={state.countBy} />

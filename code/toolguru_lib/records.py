@@ -8,6 +8,17 @@ from dataclasses import dataclass
 from toolguru_lib import assembly, cutter
 
 
+class ScanError(Exception):
+    """A document cannot be scanned. The message is written for the user."""
+
+
+@dataclass(frozen=True)
+class FileRef:
+    """A hub file waiting to be scanned."""
+    file_id: str
+    name: str
+
+
 @dataclass(frozen=True)
 class DocumentRecord:
     file_id: str

@@ -30,3 +30,7 @@ PALETTE_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_palette'
 PALETTE_NAME = ADDIN_NAME
 PALETTE_WIDTH = 760
 PALETTE_HEIGHT = 640
+
+# Custom event that turns the folder scan: one program per firing, so Fusion
+# handles clicks (Stop, for one) between programs.
+SCAN_EVENT_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_scanStep'

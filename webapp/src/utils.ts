@@ -1,7 +1,17 @@
 // Pure utility functions — no React, no DOM, no bridge. Everything that
 // doesn't need a browser goes here so it's directly testable with Vitest.
 
-import type { AppState, Counts, Dataset, LengthUnit, SortKey, SortState, TallyRow } from './types'
+import type {
+  AppState,
+  Browser,
+  Counts,
+  Dataset,
+  LengthUnit,
+  ScanJob,
+  SortKey,
+  SortState,
+  TallyRow,
+} from './types'
 
 const MM_PER_INCH = 25.4
 const TEXT_KEYS: SortKey[] = ['tool_type', 'description']
@@ -85,12 +95,13 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-export function countsSummary(counts: Counts): string {
-  return [
-    plural(counts.documents, 'program'),
-    plural(counts.observations, 'operation'),
-    plural(counts.cutters, 'cutter'),
-  ].join(', ')
+/** Pass `assemblies` when counting by assembly, so the summary counts what the table counts. */
+export function countsSummary(counts: Counts, assemblies?: number): string {
+  const tools =
+    assemblies === undefined
+      ? plural(counts.cutters, 'cutter')
+      : `${assemblies} ${assemblies === 1 ? 'assembly' : 'assemblies'}`
+  return [plural(counts.documents, 'program'), plural(counts.observations, 'operation'), tools].join(', ')
 }
 
 /** Same column flips direction; a new column starts A–Z for text, largest first for numbers. */
@@ -136,4 +147,28 @@ export function filterTally(rows: TallyRow[], text: string, family: string): Tal
 
 export function familiesIn(rows: TallyRow[]): string[] {
   return [...new Set(rows.map((row) => row.family))].sort()
+}
+
+/** How far a folder scan has got, 0 to 100. An empty scan is complete. */
+export function scanPercent(scan: ScanJob): number {
+  if (scan.total === 0) return 100
+  return Math.round(((scan.total - scan.pending) / scan.total) * 100)
+}
+
+/** "Scanning “Folder”: 12 of 40", or paused / finished. */
+export function scanHeadline(scan: ScanJob): string {
+  const progress = `${scan.total - scan.pending} of ${scan.total}`
+  if (scan.running) return `Scanning “${scan.folder}”: ${progress}`
+  if (scan.pending > 0) return `Scan of “${scan.folder}” paused at ${progress}`
+  return `Scan of “${scan.folder}” finished: ${progress}`
+}
+
+export function scanOutcome(scan: ScanJob): string {
+  return `${scan.scanned} scanned, ${scan.skipped} skipped, ${scan.failed} failed`
+}
+
+/** What the folder picker says about the level it is showing. */
+export function browserHere(browser: Browser): string {
+  if (browser.folderId === '') return 'Choose a project.'
+  return `${plural(browser.programs, 'Fusion design')} directly in this folder.`
 }
