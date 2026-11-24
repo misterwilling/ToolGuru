@@ -1,18 +1,19 @@
 # Progress
-_Updated 2026-11-22._
+_Updated 2026-11-24._
+
+Everything under Done is merged into `main` (pull requests 1 to 3, merged
+2026-11-22) and CI is green there. `main` is the only branch.
 
 ## Done
 - Milestones 0 and 1: probes, scope, scaffold, public repo, CI green on `main`.
-- Milestone 2 (branch `m2-trial-scan`, not yet pushed): cutter fingerprint,
+- Milestone 2: cutter fingerprint,
   records, SQLite store with Trial and Main files, tally, Fusion extractor,
   palette actions (scan active document, clear trial, switch dataset, reset
   main with backup), Tally screen with sort and filter.
-- Assembly counting (branch `rta-assembly-view`, on top of `m2-trial-scan`, not
-  yet pushed): holder and stickout per observation, `build_assembly_tally`,
+- Assembly counting: holder and stickout per observation, `build_assembly_tally`,
   `settings.json`, "Count by: Cutter / Assembly" switch. Decisions are in
   `docs/SCOPE.md` under "Rotating tool assemblies (RTA)".
-- Milestone 3, folder scan (branch `m3-folder-scan`, on top of
-  `rta-assembly-view`, committed, not yet pushed):
+- Milestone 3, folder scan:
   - `toolguru_lib/hub.py` lists projects and folders, collects the Fusion
     designs in a folder (subfolders optional), and opens one file, reads it and
     closes it without saving. A file the user already has open is left open.
@@ -27,8 +28,7 @@ _Updated 2026-11-22._
     palette after each program. Palette: "Scan a folder…", folder picker,
     confirmation with the count, progress bar, Stop / Resume / Dismiss, and a
     list of skipped and failed files (`webapp/src/components/ScanPanel.tsx`).
-  - Also on this branch: the summary line counts assemblies when counting by
-    assembly.
+  - The summary line counts assemblies when counting by assembly.
 - Checked in live Fusion on the three-program test folder: three scans of the
   folder each ended 3 scanned, 0 skipped, 0 failed, with the tally unchanged
   (3 programs, 117 operations, 24 cutters), every opened document closed and
@@ -55,7 +55,7 @@ _Updated 2026-11-22._
   errors in the log appear on every open. Treated as a one-off Fusion crash
   unless it happens again. The exact case can no longer be repeated as it
   was: the hand session saved the program, which made a new version.
-- "First used" date fix (2026-11-22, committed on `m3-folder-scan`):
+- "First used" date fix (2026-11-22, merged with milestone 3):
   `DataFile.dateCreated` is the date of the latest version, so every stored
   created date was really the last save. `extract.first_saved` now reads the
   oldest entry of `dataFile.versions`; it costs about 0.4 s per program.
@@ -66,13 +66,12 @@ _Updated 2026-11-22._
   22 pass, and the live-hub test ran rather than skipped. **Still to do:**
   rescan the first Main folder so the dates already stored are refreshed.
   The test runner counts a skipped test as passed and does not list skips.
-- Three local branches wait for a go-ahead to push, in order: `m2-trial-scan`,
-  `rta-assembly-view`, `m3-folder-scan`.
 
 ## Next step
-Main sweep, one project folder first. Then milestone 4: dedup, similarity,
-cutter detail, holding library. Later: 5 compare a program against the Hub
-standard (by assembly, with the tool-number check); 6 opt-in swap to standard.
+Rescan the first Main folder for the corrected dates, then carry the Main
+sweep on to further folders. Then milestone 4: dedup, similarity, cutter
+detail, holding library. Later: 5 compare a program against the Hub standard
+(by assembly, with the tool-number check); 6 opt-in swap to standard.
 
 A separate Mastercam 2022 harvester is being probed outside this repo. If it
 goes ahead, this add-in gains only a generic "Import scan file"; it stays
@@ -97,7 +96,25 @@ Fusion-only.
 - Nothing has been tried yet on a design with out-of-date references or one
   that Fusion wants to upgrade on open; such a file may raise a dialog.
 
+## Setting up on another computer
+A fresh clone is missing four things that are not in the repo:
+- The git hooks are off until `git config core.hooksPath .githooks` is run.
+  Set `user.name` and `user.email` too; commits use a GitHub no-reply address.
+- `webapp/dist/` is not committed. Run `npm install` and `npm run build` in
+  `webapp/`, or the palette opens blank.
+- Fusion does not know the add-in: Scripts and Add-Ins → Add-Ins → + → pick
+  the cloned folder → Run. It is not set to run on startup. Fusion's own MCP
+  server must be switched on; `.mcp.json` here registers it for the session.
+- The scan data (`~/.toolguru/`: Trial, Main, `settings.json`) stays on the
+  computer that made it. Copy the folder by hand, one way, with Fusion closed.
+  Without it the add-in starts with two empty datasets.
+
 ## Working notes
+- CI runs the unit tests on Python 3.12; Fusion and the development computer
+  run 3.14. A module-level annotation such as `adsk.core.X | None` is
+  evaluated at import on 3.12 and fails against the mocked `adsk`. Start any
+  module that has one with `from __future__ import annotations`. Only CI
+  catches this.
 - Handlers registered from an MCP script die when that script ends. Never
   restart the add-in over MCP by calling the launcher's `stop()`/`run()`: the
   button and palette go dead. Restart it through Fusion's own object instead —
