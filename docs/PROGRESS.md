@@ -96,19 +96,6 @@ Fusion-only.
 - Nothing has been tried yet on a design with out-of-date references or one
   that Fusion wants to upgrade on open; such a file may raise a dialog.
 
-## Setting up on another computer
-A fresh clone is missing four things that are not in the repo:
-- The git hooks are off until `git config core.hooksPath .githooks` is run.
-  Set `user.name` and `user.email` too; commits use a GitHub no-reply address.
-- `webapp/dist/` is not committed. Run `npm install` and `npm run build` in
-  `webapp/`, or the palette opens blank.
-- Fusion does not know the add-in: Scripts and Add-Ins → Add-Ins → + → pick
-  the cloned folder → Run. It is not set to run on startup. Fusion's own MCP
-  server must be switched on; `.mcp.json` here registers it for the session.
-- The scan data (`~/.toolguru/`: Trial, Main, `settings.json`) stays on the
-  computer that made it. Copy the folder by hand, one way, with Fusion closed.
-  Without it the add-in starts with two empty datasets.
-
 ## Working notes
 - CI runs the unit tests on Python 3.12; Fusion and the development computer
   run 3.14. A module-level annotation such as `adsk.core.X | None` is
