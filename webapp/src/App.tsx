@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
+// The add-in's icon: one drawing, shared with the toolbar button's PNG files.
+import mark from '../../docs/icon/toolguru.svg'
 import { onFusionPush, sendToFusion } from './api/fusionBridge'
 import { CutterDetail } from './components/CutterDetail'
+import { DatabasesPanel } from './components/DatabasesPanel'
 import { ScanPanel } from './components/ScanPanel'
+import { Stats } from './components/Stats'
 import { TallyTable } from './components/TallyTable'
 import type { AppState, CountBy, LengthUnit } from './types'
 import { countsSummary, formatTolerance, isAppState, toleranceToMm } from './utils'
@@ -53,7 +57,9 @@ export function App() {
   // dismissed before another folder is picked.
   const locked = busy || scanning
   const toleranceMm = toleranceToMm(toleranceText, toleranceUnit)
-  const summary = countsSummary(state.counts, state.countBy === 'assembly' ? state.tally.length : undefined)
+  // What the list counts: assemblies when counting by assembly, cutters otherwise.
+  const assemblies = state.countBy === 'assembly' ? state.tally.length : undefined
+  const summary = countsSummary(state.counts, assemblies)
   const unitButton = (value: LengthUnit) => (
     <button
       className={state.displayUnit === value ? 'selected' : undefined}
@@ -76,9 +82,13 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>ToolGuru</h1>
-        <span className="muted">{summary}</span>
+        <img className="mark" src={mark} alt="" />
+        <h1>
+          Tool<span>Guru</span>
+        </h1>
       </header>
+
+      <Stats counts={state.counts} assemblies={assemblies} />
 
       <div className="actions">
         <button className="primary" disabled={locked} onClick={() => run('scan_active')}>
@@ -90,8 +100,27 @@ export function App() {
         >
           Scan a folder…
         </button>
+        <button
+          className={state.databases ? 'selected' : undefined}
+          disabled={busy}
+          onClick={() => run(state.databases ? 'close_databases' : 'open_databases')}
+        >
+          Databases…
+        </button>
         <button disabled={locked} onClick={() => setConfirmReset(true)}>Reset data</button>
       </div>
+
+      {state.databases && (
+        // A new panel each time the list changes, so a finished save or load
+        // clears what was typed.
+        <DatabasesPanel
+          key={state.databases.map((database) => `${database.name}:${database.saved_at}`).join('|')}
+          databases={state.databases}
+          counts={state.counts}
+          disabled={locked}
+          run={run}
+        />
+      )}
 
       <ScanPanel state={state} busy={busy} run={run} />
 
@@ -101,7 +130,7 @@ export function App() {
           {unitButton('in')}
           {unitButton('mm')}
         </span>
-        <span className="muted">A tool entered in the other unit shows that too, in brackets.</span>
+        <span className="muted">A tool entered in the other unit shows that unit too.</span>
       </div>
 
       <div className="actions">

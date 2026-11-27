@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from toolguru_lib import saved
 from toolguru_lib import settings as user_settings
 from toolguru_lib import store as scan_store
 from toolguru_lib.detail import build_cutter_detail
@@ -47,7 +48,9 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
     if state.selected_cutter is not None:
         detail = build_cutter_detail(
             rows, state.selected_cutter, settings.stickout_tolerance_mm)
-    return state.serialize(store.counts(), tally, settings, store.job(), detail)
+    databases = saved.list_saved(base_dir) if state.databases_open else None
+    return state.serialize(
+        store.counts(), tally, settings, store.job(), detail, databases)
 
 
 def refuse_while_scanning(state: AppState) -> bool:
@@ -158,6 +161,72 @@ def reset_data(state: AppState, confirm: str, stamp: str,
     state.last_scan = None
     state.selected_cutter = None
     state.notice = f'Data reset. Backup saved as {backup.name}.'
+
+
+# --- Saved databases ----------------------------------------------------------
+# Named copies of the data: save what is on screen, load one in its place, or
+# add one to it.
+
+LOAD_MODES = ('replace', 'add')
+
+
+def _programs(count: int) -> str:
+    return f'{count} program' if count == 1 else f'{count} programs'
+
+
+def open_databases(state: AppState) -> None:
+    state.begin_action()
+    state.databases_open = True
+
+
+def close_databases(state: AppState) -> None:
+    state.begin_action()
+    state.databases_open = False
+
+
+def save_database(state: AppState, name: str, replace: bool,
+                  base_dir: Path | None = None) -> None:
+    """Save the data on screen under a name. An existing database of that
+    name is only replaced when `replace` is set."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    try:
+        entry = saved.save(name, replace, base_dir)
+    except saved.SavedError as error:
+        state.error = str(error)
+        return
+    state.notice = (f"Saved as “{entry['name']}”: "
+                    f"{_programs(entry['counts']['documents'])}.")
+
+
+def load_database(state: AppState, name: str, mode: str, stamp: str,
+                  base_dir: Path | None = None) -> None:
+    """Load a saved database: in place of the data on screen ('replace',
+    which backs that data up first) or merged into it ('add')."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    if mode not in LOAD_MODES:
+        state.error = f'Unknown way to load: {mode!r}'
+        return
+    try:
+        if mode == 'replace':
+            backup = saved.load_replacing(name, stamp, base_dir)
+            state.notice = f'Loaded “{name}”.' + (
+                f' What was on screen is kept as {backup.name}.' if backup else '')
+        else:
+            result = saved.load_adding(name, base_dir)
+            state.notice = (
+                f"Merged “{name}”: {_programs(result['added'])} added, "
+                f"{result['updated']} updated to a later version, "
+                f"{result['kept']} already here.")
+    except saved.SavedError as error:
+        state.error = str(error)
+        return
+    state.last_scan = None
+    state.selected_cutter = None
+    state.databases_open = False
 
 
 # --- Folder scan --------------------------------------------------------------

@@ -17,17 +17,17 @@ import {
   stickoutParts,
   toggleSort,
   typeChoice,
+  unitHeading,
   typesByFamily,
   validChoice,
 } from '../utils'
 
 const BEFORE_DIAMETER: Column[] = [{ key: 'tool_type', label: 'Type', numeric: false }]
-const DIAMETER: Column = { key: 'diameter_mm', label: 'Diameter', numeric: true }
 const AFTER_DIAMETER: Column[] = [
   { key: 'flutes', label: 'Flutes', numeric: true },
   { key: 'description', label: 'Description', numeric: false },
-  { key: 'programs', label: 'Programs', numeric: true },
-  { key: 'operations', label: 'Operations', numeric: true },
+  { key: 'programs', label: 'PGMs', numeric: true, hint: 'Programs that used the tool' },
+  { key: 'operations', label: 'OPs', numeric: true, hint: 'Operations that used the tool' },
   { key: 'time_s', label: 'Cutting time', numeric: true },
   { key: 'first_used', label: 'First used', numeric: true },
   { key: 'last_used', label: 'Last used', numeric: true },
@@ -37,6 +37,8 @@ interface Column {
   key: SortKey
   label: string
   numeric: boolean
+  /** Shown when the pointer rests on a shortened heading. */
+  hint?: string
 }
 
 interface Props {
@@ -83,12 +85,21 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
   // and only when some row has one.
   const otherDiameters = shown.some((line) => line.diameter.other !== '')
   const otherStickouts = byAssembly && shown.some((line) => line.stickout.other !== '')
-  const otherHeading = `(${otherUnit(display)})`
+  // Each length column names its unit once, in its heading; the rows under
+  // it are bare figures.
+  const other = otherUnit(display)
+  const diameter: Column = {
+    key: 'diameter_mm',
+    label: unitHeading('Dia', display),
+    numeric: true,
+    hint: `Diameter in ${display === 'in' ? 'inches' : 'millimetres'}`,
+  }
 
   const heading = (column: Column) => (
     <th
       key={column.key}
       className={column.numeric ? 'num' : undefined}
+      title={column.hint}
       onClick={() => setSort(toggleSort(sort, column.key))}
     >
       {column.label}
@@ -151,26 +162,26 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
         <thead>
           <tr>
             {BEFORE_DIAMETER.map(heading)}
-            {heading(DIAMETER)}
+            {heading(diameter)}
             {otherDiameters && (
-              <th className="other" onClick={() => setSort(toggleSort(sort, DIAMETER.key))}>
-                {otherHeading}
+              <th className="other" onClick={() => setSort(toggleSort(sort, diameter.key))}>
+                {unitHeading('Dia', other)}
               </th>
             )}
             {AFTER_DIAMETER.map(heading)}
             {byAssembly && <th>Holder</th>}
-            {byAssembly && <th className="num">Stickout</th>}
-            {otherStickouts && <th className="other">{otherHeading}</th>}
+            {byAssembly && <th className="num">{unitHeading('Stickout', display)}</th>}
+            {otherStickouts && <th className="other">{unitHeading('Stickout', other)}</th>}
             <th>Tool numbers</th>
             <th>Machines</th>
           </tr>
         </thead>
         <tbody>
-          {shown.map(({ row, diameter, stickout }) => (
+          {shown.map(({ row, diameter: dia, stickout }) => (
             <tr key={rowKey(row)} className="clickable" onClick={() => onOpen(row.cutter_key)}>
               <td>{row.tool_type}</td>
-              <td className="num">{diameter.shown}</td>
-              {otherDiameters && <td className="other">{diameter.other}</td>}
+              <td className="num main">{dia.shown}</td>
+              {otherDiameters && <td className="other">{dia.other}</td>}
               <td className="num">{row.flutes ?? ''}</td>
               <td>
                 <div className="clip" title={row.description}>{row.description}</div>

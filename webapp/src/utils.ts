@@ -8,6 +8,7 @@ import type {
   CutterFields,
   DetailAssembly,
   LengthUnit,
+  SavedDatabase,
   ScanJob,
   SortKey,
   SortState,
@@ -33,13 +34,13 @@ export function formatDuration(seconds: number): string {
 }
 
 // Lengths are stored in millimetres and shown in the unit the user chose. A
-// tool that was entered in the other unit shows that one too, in brackets:
-// "0.197 in (5.00 mm)" for a metric drill when inches are shown. Inches are
-// shown to three decimal places and millimetres to two.
+// tool that was entered in the other unit shows that one too, after it:
+// "0.197 in" then "5.00 mm" for a metric drill when inches are shown. Inches
+// are shown to three decimal places and millimetres to two.
 
 /**
  * A length ready for a table. `shown` is in the unit the user chose; `other`
- * is the bracketed other unit, or '' when the tool was not entered in it.
+ * is the same length in the other unit, or '' when the tool was not entered in it.
  * Kept apart so each can sit in its own column: every `shown` value then
  * lines up, whether or not the row has an `other`.
  */
@@ -58,15 +59,29 @@ function inUnit(mm: number, unit: LengthUnit): string {
   return unit === 'in' ? (mm / MM_PER_INCH).toFixed(3) : mm.toFixed(2)
 }
 
-/** One length, or a range when `max` differs from `min`. `both` adds the other unit. */
-function lengthParts(min: number, max: number, display: LengthUnit, both: boolean): LengthParts {
-  const text = (unit: LengthUnit): string =>
-    `${min === max ? inUnit(min, unit) : `${inUnit(min, unit)}–${inUnit(max, unit)}`} ${unit}`
-  return { shown: text(display), other: both ? `(${text(otherUnit(display))})` : '' }
+/**
+ * One length, or a range when `max` differs from `min`. `both` adds the other
+ * unit. `named` puts the unit after each figure ("0.500 in"); a column that
+ * names its unit in the heading asks for the bare figure ("0.500").
+ */
+function lengthParts(min: number, max: number, display: LengthUnit, both: boolean, named: boolean): LengthParts {
+  const text = (unit: LengthUnit): string => {
+    const figures = min === max ? inUnit(min, unit) : `${inUnit(min, unit)}–${inUnit(max, unit)}`
+    return named ? `${figures} ${unit}` : figures
+  }
+  return { shown: text(display), other: both ? text(otherUnit(display)) : '' }
 }
 
+/** A column heading that names its unit, so the rows under it need not: "Dia(in)". */
+export function unitHeading(label: string, unit: LengthUnit): string {
+  return `${label}(${unit})`
+}
+
+/** What sets the two units apart in one piece of text: an em space, wider than a word space. */
+export const UNIT_GAP = '\u2003'
+
 function joined(parts: LengthParts): string {
-  return parts.other === '' ? parts.shown : `${parts.shown} ${parts.other}`
+  return parts.other === '' ? parts.shown : `${parts.shown}${UNIT_GAP}${parts.other}`
 }
 
 /** True when the tool was ever entered in the unit that is not the one shown. */
@@ -74,8 +89,9 @@ function enteredInOtherUnit(units: string[], display: LengthUnit): boolean {
   return units.includes(display === 'in' ? 'millimeters' : 'inches')
 }
 
+/** A diameter for the list, as bare figures: the column headings name the units. */
 export function diameterParts(mm: number | null, units: string[], display: LengthUnit): LengthParts {
-  return mm === null ? NO_LENGTH : lengthParts(mm, mm, display, enteredInOtherUnit(units, display))
+  return mm === null ? NO_LENGTH : lengthParts(mm, mm, display, enteredInOtherUnit(units, display), false)
 }
 
 /** One row per cutter, or per assembly when counting by assembly. */
@@ -83,30 +99,43 @@ export function rowKey(row: TallyRow): string {
   return row.assembly_key ?? row.cutter_key
 }
 
-/** A single stickout, or the range an assembly row covers. */
+function stickoutLength(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  units: string[],
+  display: LengthUnit,
+  named: boolean,
+): LengthParts {
+  if (min === null || min === undefined || max === null || max === undefined) return NO_LENGTH
+  return lengthParts(min, max, display, enteredInOtherUnit(units, display), named)
+}
+
+/**
+ * A single stickout, or the range an assembly row covers, for the list: bare
+ * figures, because the column headings name the units.
+ */
 export function stickoutParts(
   min: number | null | undefined,
   max: number | null | undefined,
   units: string[],
   display: LengthUnit,
 ): LengthParts {
-  if (min === null || min === undefined || max === null || max === undefined) return NO_LENGTH
-  return lengthParts(min, max, display, enteredInOtherUnit(units, display))
+  return stickoutLength(min, max, units, display, false)
 }
 
-/** A stickout as one piece of text, for a sentence or a label. */
+/** A stickout as one piece of text with its units, for a sentence or a label. */
 export function formatStickout(
   min: number | null | undefined,
   max: number | null | undefined,
   units: string[],
   display: LengthUnit,
 ): string {
-  return joined(stickoutParts(min, max, units, display))
+  return joined(stickoutLength(min, max, units, display, true))
 }
 
 /** A tolerance belongs to no tool, so it always shows both units. */
 export function formatTolerance(mm: number, display: LengthUnit): string {
-  return joined(lengthParts(mm, mm, display, true))
+  return joined(lengthParts(mm, mm, display, true, true))
 }
 
 /** What the user typed as a tolerance, in millimetres; null when it is not zero or more. */
@@ -132,13 +161,52 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-/** Pass `assemblies` when counting by assembly, so the summary counts what the table counts. */
-export function countsSummary(counts: Counts, assemblies?: number): string {
-  const tools =
+export type StatKind = 'programs' | 'operations' | 'cutters' | 'assemblies'
+
+/** One figure of what has been scanned: "1,856" "operations". */
+export interface StatItem {
+  kind: StatKind
+  value: string
+  label: string
+}
+
+/**
+ * What has been scanned, as three figures: programs, operations, and cutters.
+ * Pass `assemblies` when counting by assembly, so the third figure counts
+ * what the table counts.
+ */
+export function statItems(counts: Counts, assemblies?: number): StatItem[] {
+  const item = (kind: StatKind, count: number, one: string, many: string): StatItem => ({
+    kind,
+    value: count.toLocaleString('en-US'),
+    label: count === 1 ? one : many,
+  })
+  return [
+    item('programs', counts.documents, 'program', 'programs'),
+    item('operations', counts.observations, 'operation', 'operations'),
     assemblies === undefined
-      ? plural(counts.cutters, 'cutter')
-      : `${assemblies} ${assemblies === 1 ? 'assembly' : 'assemblies'}`
-  return [plural(counts.documents, 'program'), plural(counts.observations, 'operation'), tools].join(', ')
+      ? item('cutters', counts.cutters, 'cutter', 'cutters')
+      : item('assemblies', assemblies, 'assembly', 'assemblies'),
+  ]
+}
+
+/** The same figures as one sentence: "3 programs, 118 operations, 22 cutters". */
+export function countsSummary(counts: Counts, assemblies?: number): string {
+  return statItems(counts, assemblies)
+    .map((item) => `${item.value} ${item.label}`)
+    .join(', ')
+}
+
+/** The saved database a typed name would overwrite: Windows file names
+ *  ignore capitals, and the spaces around a name are dropped. */
+export function findSaved(databases: SavedDatabase[], name: string): SavedDatabase | undefined {
+  const wanted = name.trim().toLowerCase()
+  return databases.find((database) => database.name.toLowerCase() === wanted)
+}
+
+/** What a saved database holds, for its row in the list. */
+export function savedSummary(database: SavedDatabase): string {
+  return database.counts === null ? 'Cannot be read' : countsSummary(database.counts)
 }
 
 const FIELD_ROWS: { key: string; label: string; kind: 'length' | 'angle' | 'count' | 'text' }[] = [
@@ -156,7 +224,7 @@ const FIELD_ROWS: { key: string; label: string; kind: 'length' | 'angle' | 'coun
   { key: 'material', label: 'Material', kind: 'text' },
 ]
 
-/** One line of a cutter's geometry. `other` is a length's other unit (see LengthParts), '' otherwise. */
+/** One line of a cutter's geometry. `other` is a length in the other unit (see LengthParts), '' otherwise. */
 export interface FieldRow {
   label: string
   value: string
@@ -173,7 +241,7 @@ export function cutterFieldRows(fields: CutterFields, units: string[], display: 
     if (kind === 'text') rows.push({ label, value: String(value), other: '' })
     else if (typeof value !== 'number') continue
     else if (kind === 'length') {
-      const parts = lengthParts(value, value, display, both)
+      const parts = lengthParts(value, value, display, both, true)
       rows.push({ label, value: parts.shown, other: parts.other })
     } else if (kind === 'angle') rows.push({ label, value: `${Number(value.toFixed(3))}°`, other: '' })
     else rows.push({ label, value: String(value), other: '' })

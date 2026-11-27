@@ -207,6 +207,25 @@ def _handle_reset_data(data: dict) -> None:
     actions.reset_data(state, str(data.get('confirm', '')), stamp)
 
 
+# --- Saved databases ------------------------------------------------------------
+
+def _handle_open_databases(data: dict) -> None:
+    actions.open_databases(state)
+
+
+def _handle_close_databases(data: dict) -> None:
+    actions.close_databases(state)
+
+
+def _handle_save_database(data: dict) -> None:
+    actions.save_database(state, str(data.get('name', '')), bool(data.get('replace')))
+
+
+def _handle_load_database(data: dict) -> None:
+    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    actions.load_database(state, str(data.get('name', '')), str(data.get('mode', '')), stamp)
+
+
 # --- Folder scan --------------------------------------------------------------
 
 def _handle_browse_folder(data: dict) -> None:
@@ -297,6 +316,10 @@ _handlers: dict = {
     'close_cutter': _handle_close_cutter,
     'scan_active': _handle_scan_active,
     'reset_data': _handle_reset_data,
+    'open_databases': _handle_open_databases,
+    'close_databases': _handle_close_databases,
+    'save_database': _handle_save_database,
+    'load_database': _handle_load_database,
     'browse_folder': _handle_browse_folder,
     'close_folder_picker': _handle_close_folder_picker,
     'count_folder': _handle_count_folder,

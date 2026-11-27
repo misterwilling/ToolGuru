@@ -186,6 +186,41 @@ class Store:
         self.clear()
         return backup
 
+    def merge_from(self, other: Path) -> dict[str, int]:
+        """Add another data file's programs to this one.
+
+        A program that is in both keeps this file's scan, unless the other
+        file holds a later version of the program: then the other's scan
+        takes its place. Returns how many programs were added, how many were
+        updated, and how many were kept as they were.
+        """
+        documents = ', '.join(_DOCUMENT_COLUMNS)
+        observations = ', '.join(_OBSERVATION_COLUMNS)
+        with closing(self._connect()) as conn:
+            conn.execute('ATTACH DATABASE ? AS other', (str(other),))
+            with conn:
+                shared = conn.execute(
+                    'SELECT COUNT(*) FROM other.documents o '
+                    'JOIN documents d ON d.file_id = o.file_id').fetchone()[0]
+                conn.execute(
+                    'CREATE TEMP TABLE incoming AS SELECT o.file_id FROM other.documents o '
+                    'LEFT JOIN documents d ON d.file_id = o.file_id '
+                    'WHERE d.file_id IS NULL OR o.version > d.version')
+                incoming = conn.execute('SELECT COUNT(*) FROM incoming').fetchone()[0]
+                updated = conn.execute(
+                    'DELETE FROM documents WHERE file_id IN '
+                    '(SELECT file_id FROM incoming)').rowcount
+                conn.execute(
+                    f'INSERT INTO documents ({documents}) SELECT {documents} '
+                    'FROM other.documents WHERE file_id IN (SELECT file_id FROM incoming)')
+                conn.execute(
+                    f'INSERT INTO observations ({observations}) SELECT {observations} '
+                    'FROM other.observations WHERE file_id IN (SELECT file_id FROM incoming)')
+                conn.execute('DROP TABLE incoming')
+            conn.execute('DETACH DATABASE other')
+        return {'added': incoming - updated, 'updated': updated,
+                'kept': shared - updated}
+
     # --- Folder scan queue --------------------------------------------------
     # One folder scan at a time. It is kept in the file so a scan
     # can carry on after the palette, the add-in or Fusion was closed.

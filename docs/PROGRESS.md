@@ -144,6 +144,45 @@ pushed.
     given; Python only stores a whole number of pixels, one or more.
   - In-Fusion tests re-run after this last Python change (2026-11-26): 26 of
     26 pass and `fusion_test_results.json` carries the current hash.
+  - Its own look. The owner chose Verdana with a violet
+    accent from three looks shown as pictures (the others: Bahnschrift with
+    teal; Segoe UI with Consolas figures). Verdana ships with Windows and
+    macOS, so nothing is downloaded or bundled. The header is a TOOLGURU
+    wordmark over an accent rule; list rows are tinted alternately. All in
+    `webapp/src/styles/index.css`.
+  - Quieter lengths. The other unit has no brackets: it
+    sits in its own column after a wider gap, in the muted colour, and in
+    one piece of text the two are set apart by an em space
+    (`utils.ts` `UNIT_GAP`). The shown diameter is bold. The tally's
+    Programs and Operations headings are "PGMs" and "OPs", with the full
+    word on hover.
+  - Units in the headings. In the tally a length column
+    names its unit once, in its heading, and its rows are bare figures:
+    "Dia(in)" and, when some tool needs it, "Dia(mm)" beside it; the same
+    for stickout when counting by assembly. The headings follow the "Show
+    lengths in" switch. Elsewhere (the detail, labels, the tolerance text)
+    a length still carries its unit.
+  - Header and counts. The header holds the wordmark
+    alone. The counts of programs, operations and cutters (assemblies when
+    counting by assembly) sit on their own line under it, each with a small
+    icon drawn in `webapp/src/components/Stats.tsx`: no icon library.
+  - The add-in's icon. A guru seated in meditation, with
+    a topknot and a beard, holding a tall end mill upright in each hand, on
+    a rounded square in the app's violet. The owner turned down a first
+    design (three end mills as tally bars) and directed this one through
+    several rounds; lettering was tried and dropped. The end mills are
+    drawn after the one in Fusion's own tool library (gunmetal, a band of
+    light, a dark outline, S-shaped flutes) but are original drawings, not
+    copies of Autodesk's picture. The drawings are
+    `docs/icon/toolguru.svg` and, drawn more boldly for 16 and 32 pixels,
+    `docs/icon/toolguru-small.svg`. The PNG
+    files in `commandPalette/resources/` were made from them by a browser
+    (canvas export), since no image tool is installed; the `@2x` files are
+    for high-density screens. The same drawing is shown beside the name in
+    the palette header (`App.tsx` imports `docs/icon/toolguru.svg`, so there
+    is one copy). Fusion keeps a button's old icon in memory, see
+    `docs/SCOPE.md`: after replacing the PNG files, Fusion itself has to be
+    restarted once before the toolbar shows them.
   - Tool pictures. The API has no picture of a tool (`Tool` offers
     `toJson`, `parameters`, `presets`, `toolBlockGeometry` only). Fusion's own
     tool library ships one PNG per tool type under its install folder;
@@ -164,6 +203,28 @@ pushed.
   test file deleted; the app carries no code to migrate either. After the
   rename the add-in reads the same 64 programs, 1856 operations and 141
   cutters. In-Fusion tests re-run: 26 of 26 pass on the new hash.
+
+- Saved databases (2026-11-26, same branch). A
+  "Databases…" button opens a panel: save what is on screen under a typed
+  name, and load a saved one from a list. The owner chose a list inside
+  ToolGuru over a file dialog, and to be asked on every load whether to
+  replace or add.
+  - A saved database is a copy of the data file in a `saved` folder beside
+    it (`toolguru_lib/saved.py`), without any folder-scan queue. Names must
+    be valid Windows file names; a name already saved is only overwritten
+    when the palette says "Replace".
+  - Load, replace: the data on screen is backed up first by the same code as
+    "Reset data" (`toolguru-backup-<stamp>.sqlite`), then the saved copy
+    takes its place. Empty data is not backed up.
+  - Load, merge ("Merge" in the palette): `Store.merge_from`. Programs only in the saved copy are
+    added. A program in both keeps the scan already on screen unless the
+    saved copy holds a later version of the program. The data has no "when
+    was this scanned" stamp, so the program's version number decides.
+  - Neither works while a folder scan runs. The saved list is only read
+    while the panel is open.
+  - Tests: `toolguru_tests/test_saved.py` (39) and five in `utils.test.ts`.
+    No Fusion API is involved, so there is no new in-Fusion test; the
+    existing 26 were re-run on the new hash and pass.
 
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:

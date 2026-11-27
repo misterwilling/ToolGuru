@@ -9,6 +9,8 @@ import {
   diameterParts,
   draggedWidth,
   familiesIn,
+  findSaved,
+  savedSummary,
   familyChoice,
   filterTally,
   formatDate,
@@ -20,11 +22,13 @@ import {
   otherUnit,
   rowKey,
   sortTally,
+  statItems,
   stickoutParts,
   toggleSort,
   toleranceToMm,
   typeChoice,
   typesByFamily,
+  unitHeading,
   validChoice,
 } from './utils'
 import type { TallyRow } from './types'
@@ -67,28 +71,34 @@ describe('formatDuration', () => {
 })
 
 describe('diameterParts', () => {
-  it('shows inches alone for an inch cutter when inches are shown', () => {
-    expect(diameterParts(12.7, ['inches'], 'in')).toEqual({ shown: '0.500 in', other: '' })
+  it('gives the bare figure, because the column heading names the unit', () => {
+    expect(diameterParts(12.7, ['inches'], 'in')).toEqual({ shown: '0.500', other: '' })
+    expect(diameterParts(6, ['millimeters'], 'mm')).toEqual({ shown: '6.00', other: '' })
   })
-  it('puts millimetres apart, in brackets, for a metric cutter when inches are shown', () => {
-    expect(diameterParts(5, ['millimeters'], 'in')).toEqual({ shown: '0.197 in', other: '(5.00 mm)' })
+  it('adds millimetres for a metric cutter when inches are shown', () => {
+    expect(diameterParts(5, ['millimeters'], 'in')).toEqual({ shown: '0.197', other: '5.00' })
   })
-  it('shows millimetres alone for a metric cutter when millimetres are shown', () => {
-    expect(diameterParts(6, ['millimeters'], 'mm')).toEqual({ shown: '6.00 mm', other: '' })
-  })
-  it('puts inches apart, in brackets, for an inch cutter when millimetres are shown', () => {
-    expect(diameterParts(12.7, ['inches'], 'mm')).toEqual({ shown: '12.70 mm', other: '(0.500 in)' })
+  it('adds inches for an inch cutter when millimetres are shown', () => {
+    expect(diameterParts(12.7, ['inches'], 'mm')).toEqual({ shown: '12.70', other: '0.500' })
   })
   it('has both for a cutter entered both ways, whichever unit is shown', () => {
-    expect(diameterParts(6.35, ['inches', 'millimeters'], 'in')).toEqual({ shown: '0.250 in', other: '(6.35 mm)' })
-    expect(diameterParts(6.35, ['inches', 'millimeters'], 'mm')).toEqual({ shown: '6.35 mm', other: '(0.250 in)' })
+    expect(diameterParts(6.35, ['inches', 'millimeters'], 'in')).toEqual({ shown: '0.250', other: '6.35' })
+    expect(diameterParts(6.35, ['inches', 'millimeters'], 'mm')).toEqual({ shown: '6.35', other: '0.250' })
   })
   it('shows inches to three places and millimetres to two', () => {
-    expect(diameterParts(4.7625, ['inches', 'millimeters'], 'in')).toEqual({ shown: '0.188 in', other: '(4.76 mm)' })
-    expect(diameterParts(10, ['inches', 'millimeters'], 'mm')).toEqual({ shown: '10.00 mm', other: '(0.394 in)' })
+    expect(diameterParts(4.7625, ['inches', 'millimeters'], 'in')).toEqual({ shown: '0.188', other: '4.76' })
+    expect(diameterParts(10, ['inches', 'millimeters'], 'mm')).toEqual({ shown: '10.00', other: '0.394' })
   })
   it('shows a dash and nothing beside it when there is no diameter', () => {
     expect(diameterParts(null, ['inches', 'millimeters'], 'in')).toEqual({ shown: '—', other: '' })
+  })
+})
+
+describe('unitHeading', () => {
+  it('names the unit once, in the heading', () => {
+    expect(unitHeading('Dia', 'in')).toBe('Dia(in)')
+    expect(unitHeading('Dia', 'mm')).toBe('Dia(mm)')
+    expect(unitHeading('Stickout', otherUnit('in'))).toBe('Stickout(mm)')
   })
 })
 
@@ -99,14 +109,11 @@ describe('otherUnit', () => {
 })
 
 describe('stickoutParts', () => {
-  it('keeps a range together in each unit', () => {
-    expect(stickoutParts(40, 40.4, ['millimeters'], 'in')).toEqual({
-      shown: '1.575–1.591 in',
-      other: '(40.00–40.40 mm)',
-    })
+  it('gives bare figures, a range kept together in each unit', () => {
+    expect(stickoutParts(40, 40.4, ['millimeters'], 'in')).toEqual({ shown: '1.575–1.591', other: '40.00–40.40' })
   })
-  it('has nothing beside the shown value for a tool entered in that unit', () => {
-    expect(stickoutParts(38.1, 38.1, ['inches'], 'in')).toEqual({ shown: '1.500 in', other: '' })
+  it('has nothing beside the shown figure for a tool entered in that unit', () => {
+    expect(stickoutParts(38.1, 38.1, ['inches'], 'in')).toEqual({ shown: '1.500', other: '' })
   })
   it('shows a dash when the stickout was not recorded', () => {
     expect(stickoutParts(null, null, ['millimeters'], 'in')).toEqual({ shown: '—', other: '' })
@@ -127,6 +134,28 @@ describe('formatToolNumbers', () => {
   })
   it('is empty when there are none', () => {
     expect(formatToolNumbers([])).toBe('')
+  })
+})
+
+describe('statItems', () => {
+  it('gives programs, operations and cutters, each with its own word', () => {
+    expect(statItems({ documents: 64, observations: 1856, cutters: 141 })).toEqual([
+      { kind: 'programs', value: '64', label: 'programs' },
+      { kind: 'operations', value: '1,856', label: 'operations' },
+      { kind: 'cutters', value: '141', label: 'cutters' },
+    ])
+  })
+  it('counts assemblies in place of cutters when the list counts by assembly', () => {
+    const items = statItems({ documents: 64, observations: 1856, cutters: 141 }, 180)
+    expect(items[2]).toEqual({ kind: 'assemblies', value: '180', label: 'assemblies' })
+  })
+  it('uses the singular for one of each', () => {
+    expect(statItems({ documents: 1, observations: 1, cutters: 1 }).map((item) => item.label)).toEqual([
+      'program',
+      'operation',
+      'cutter',
+    ])
+    expect(statItems({ documents: 1, observations: 1, cutters: 1 }, 1)[2].label).toBe('assembly')
   })
 })
 
@@ -358,13 +387,13 @@ describe('formatStickout', () => {
   })
 
   it('puts the range in both units for a metric tool when inches are shown', () => {
-    expect(formatStickout(40, 40.4, ['millimeters'], 'in')).toBe('1.575–1.591 in (40.00–40.40 mm)')
-    expect(formatStickout(40, 40, ['millimeters'], 'in')).toBe('1.575 in (40.00 mm)')
+    expect(formatStickout(40, 40.4, ['millimeters'], 'in')).toBe('1.575–1.591 in\u200340.00–40.40 mm')
+    expect(formatStickout(40, 40, ['millimeters'], 'in')).toBe('1.575 in\u200340.00 mm')
   })
 
   it('follows the unit that is shown', () => {
     expect(formatStickout(40, 40.4, ['millimeters'], 'mm')).toBe('40.00–40.40 mm')
-    expect(formatStickout(38.1, 38.354, ['inches'], 'mm')).toBe('38.10–38.35 mm (1.500–1.510 in)')
+    expect(formatStickout(38.1, 38.354, ['inches'], 'mm')).toBe('38.10–38.35 mm\u20031.500–1.510 in')
   })
 
   it('shows a dash when the stickout was not recorded', () => {
@@ -379,9 +408,9 @@ describe('formatStickout', () => {
 
 describe('formatTolerance', () => {
   it('always shows both units, the shown one first', () => {
-    expect(formatTolerance(0.5, 'in')).toBe('0.020 in (0.50 mm)')
-    expect(formatTolerance(0.5, 'mm')).toBe('0.50 mm (0.020 in)')
-    expect(formatTolerance(0, 'in')).toBe('0.000 in (0.00 mm)')
+    expect(formatTolerance(0.5, 'in')).toBe('0.020 in\u20030.50 mm')
+    expect(formatTolerance(0.5, 'mm')).toBe('0.50 mm\u20030.020 in')
+    expect(formatTolerance(0, 'in')).toBe('0.000 in\u20030.00 mm')
   })
 })
 
@@ -437,7 +466,7 @@ describe('cutterFieldRows', () => {
   it('gives the lengths of a metric cutter both units, but never angles or counts', () => {
     const fields = { DC: 5, NOF: 2, SIG: 118, TA: 0.5 }
     expect(cutterFieldRows(fields, ['millimeters'], 'in')).toEqual([
-      { label: 'Diameter', value: '0.197 in', other: '(5.00 mm)' },
+      { label: 'Diameter', value: '0.197 in', other: '5.00 mm' },
       { label: 'Flutes', value: '2', other: '' },
       { label: 'Taper angle', value: '0.5°', other: '' },
       { label: 'Tip angle', value: '118°', other: '' },
@@ -448,7 +477,7 @@ describe('cutterFieldRows', () => {
       { label: 'Diameter', value: '5.00 mm', other: '' },
     ])
     expect(cutterFieldRows({ DC: 12.7 }, ['inches'], 'mm')).toEqual([
-      { label: 'Diameter', value: '12.70 mm', other: '(0.500 in)' },
+      { label: 'Diameter', value: '12.70 mm', other: '0.500 in' },
     ])
   })
   it('names every length the fingerprint uses', () => {
@@ -495,7 +524,7 @@ describe('assemblyLabel', () => {
 
   it('names the holder and the stickout in the shown unit', () => {
     expect(assemblyLabel(assembly({}), ['inches'], 'in')).toBe('Test Holder, 1.500 in')
-    expect(assemblyLabel(assembly({}), ['inches'], 'mm')).toBe('Test Holder, 38.10 mm (1.500 in)')
+    expect(assemblyLabel(assembly({}), ['inches'], 'mm')).toBe('Test Holder, 38.10 mm\u20031.500 in')
   })
   it('shows the range an assembly covers', () => {
     expect(assemblyLabel(assembly({ stickout_max_mm: 38.354 }), ['inches'], 'in')).toBe(
@@ -542,5 +571,33 @@ describe('draggedWidth', () => {
   })
   it('never goes wider than the most width', () => {
     expect(draggedWidth(240, 5000)).toBe(1000)
+  })
+})
+
+describe('saved databases', () => {
+  const counts = { documents: 2, observations: 31, cutters: 9 }
+  const saved = [
+    { name: 'Mill jobs', saved_at: 1_700_000_000, counts },
+    { name: 'Lathe', saved_at: 1_700_000_500, counts: null },
+  ]
+
+  it('finds a saved name typed in other capitals or with spaces around it', () => {
+    expect(findSaved(saved, '  mill JOBS ')?.name).toBe('Mill jobs')
+  })
+
+  it('does not match a name that only starts the same', () => {
+    expect(findSaved(saved, 'Mill')).toBe(undefined)
+  })
+
+  it('finds nothing for an empty name', () => {
+    expect(findSaved(saved, '   ')).toBe(undefined)
+  })
+
+  it('says what a saved database holds', () => {
+    expect(savedSummary(saved[0])).toBe('2 programs, 31 operations, 9 cutters')
+  })
+
+  it('says so when a saved file cannot be read', () => {
+    expect(savedSummary(saved[1])).toBe('Cannot be read')
   })
 })

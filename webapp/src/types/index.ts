@@ -97,6 +97,13 @@ export interface Counts {
   cutters: number
 }
 
+/** One saved database. `counts` is null when its file cannot be read. */
+export interface SavedDatabase {
+  name: string
+  saved_at: number // epoch seconds
+  counts: Counts | null
+}
+
 export interface LastScan {
   name: string
   operations: number
@@ -150,6 +157,7 @@ export interface AppState {
   toolPictures?: Record<string, string> // tool type -> address of Fusion's picture of it
   tally: TallyRow[]
   detail: CutterDetail | null // the cutter opened from the tally, if any
+  databases: SavedDatabase[] | null // the saved databases, while their panel is open
   lastScan: LastScan | null
   browser: Browser | null
   confirmScan: ConfirmScan | null

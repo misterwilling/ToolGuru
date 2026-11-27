@@ -173,6 +173,10 @@ Three test layers:
   program without saving closes them again and restores the active document.
 - `Application.unregisterCustomEvent` for an id that was never registered
   returns without raising.
+- Fusion keeps a command's icons in memory for the rest of the session, by
+  the path of its resource folder. Replacing the PNG files and restarting
+  the add-in still shows the old icon; pointing `resourceFolder` at a copy
+  in a new folder, or restarting Fusion, shows the new one (2026-11-26).
 - `DataFile.dateCreated` is the date of the file's latest version, the same
   as `dateModified`; it is not the date the file was first made. Each entry
   of `dataFile.versions` carries its own `versionNumber` and `dateCreated`,

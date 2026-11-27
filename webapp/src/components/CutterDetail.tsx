@@ -169,7 +169,7 @@ export function CutterDetail({ detail, display, picture, busy, onClose }: Props)
               <th>Holder</th>
               <th className="num">Stickout</th>
               <th>Machine</th>
-              <th className="num">Ops</th>
+              <th className="num" title="Operations that used the tool">OPs</th>
               <th className="num">Cutting time</th>
             </tr>
           </thead>
