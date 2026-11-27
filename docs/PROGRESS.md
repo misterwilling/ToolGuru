@@ -421,6 +421,9 @@ pushed.
     (`line['writable']`), and a line merged from both is written from its
     Fusion scans. Do not probe converted tools in a Fusion session with
     unsaved work, and one tool at a time.
+  - That is the end of it, by the owner's decision (2026-11-27): Mastercam
+    tools are brought into Fusion by a separate tool that already exists.
+    ToolGuru will not write them to a Fusion library; do not build it.
   - Palette: "Import scan file…" (the file dialog opens from a custom event,
     API-5), a "From" column and a source filter once there is more than
     Fusion, ticks disabled on Mastercam-only lines, "Read from" in the
@@ -450,12 +453,10 @@ The Mastercam 2022 harvester lives outside this repo. This add-in has only
 the generic "Import scan file" (see In flight); it never talks to Mastercam.
 
 ## Open questions
-- Mastercam cutters cannot be written to the holding library. That needs a
-  tool record Fusion is proven to accept, found without crashing Fusion on
-  the owner's work.
-- The harvester does not record whether a part is inch or metric. The import
-  takes the unit from each operation's tool, which was right for every
-  operation in the trial (all inch parts). A metric part has not been seen.
+- The import reads a part's unit from the harvester's `part_is_metric`
+  (harvester build 4 on), falling back to each tool's own flag for older
+  harvests. Every part in the trial was an inch part; a metric part has not
+  been seen for real.
 - Mastercam's cycle time may include rapid moves; Fusion's figure is feed
   time only. Not compared.
 - Re-saving an old program today moves its "last used" to today. One scanned

@@ -16,7 +16,8 @@ Only a tool that Fusion itself wrote is ever written back to Fusion. A tool
 read from another CAM system (see mastercam.py) is ToolGuru's own rewriting
 of it, and Fusion can crash on a tool record it does not like. So a cutter
 seen only in such programs cannot be picked, and a line merged from both
-kinds is written from its Fusion scans alone.
+kinds is written from its Fusion scans alone. This is by design, not a gap
+to fill: Mastercam tools are brought into Fusion by a separate tool.
 
 Pure Python. `library.py` does the writing in Fusion.
 """

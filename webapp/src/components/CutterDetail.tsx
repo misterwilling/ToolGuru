@@ -128,7 +128,7 @@ export function CutterDetail({ detail, display, picture, busy, onClose, onSplit,
           </label>
         ) : (
           <span className="muted">
-            Read from Mastercam only. It cannot be written to a Fusion tool library yet.
+            Read from Mastercam only. ToolGuru writes only tools scanned in Fusion to a Fusion tool library.
           </span>
         )}
         {detail.library.writable && detail.library.picked && (

@@ -12,7 +12,8 @@ Fusion one, even when the geometry is the same (see cutter.identify).
 
 These records are for ToolGuru's own use. They are NOT proven to be tools
 Fusion will accept, and Fusion can crash on a tool record it does not like,
-so they are never written to a Fusion tool library (see holding.py).
+so they are never written to a Fusion tool library (see holding.py). That
+is by design: Mastercam tools reach Fusion through a separate tool.
 
 Pure Python.
 """
@@ -150,14 +151,21 @@ def _holder(holder: dict | None, unit: str) -> dict | None:
     }
 
 
-def tool_record(operation: dict, assembly: dict | None) -> dict | None:
+def tool_record(operation: dict, assembly: dict | None,
+                part_is_metric: bool | None = None) -> dict | None:
     """One operation's tool under Fusion's names, or None when the
     operation has no tool. `assembly` is the harvester's fuller record of the
-    same tool assembly, when it has one."""
+    same tool assembly, when it has one.
+
+    Mastercam holds a tool's sizes, and an operation's feeds, in the part's
+    unit, whatever unit the tool itself was defined in: a 6 mm cutter in an
+    inch part is 0.2362. So the part's unit is the one that counts. A harvest
+    from before it was recorded falls back to the tool's own flag."""
     tool = operation.get('tool')
     if not isinstance(tool, dict):
         return None
-    unit = 'millimeters' if tool.get('is_metric') else 'inches'
+    metric = tool.get('is_metric') if part_is_metric is None else part_is_metric
+    unit = 'millimeters' if metric else 'inches'
     tool_type = fusion_type(_text(tool.get('type')))
     held = operation.get('assembly') or {}
     stickout = _number(held.get('stickout')) or _number(
@@ -346,6 +354,9 @@ def convert(record: dict) -> tuple[DocumentRecord, list[ObservationRecord]]:
     each operation that has an in-scope tool."""
     operations = [operation for operation in record.get('operations') or []
                   if isinstance(operation, dict)]
+    part_is_metric = record.get('part_is_metric')
+    if not isinstance(part_is_metric, bool):
+        part_is_metric = None   # an older harvest did not record it
     times, uncredited = cutting_times(operations)
     document = document_record(record, uncredited)
     machines = {group.get('id'): group for group in record.get('machine_groups') or []
@@ -357,7 +368,7 @@ def convert(record: dict) -> tuple[DocumentRecord, list[ObservationRecord]]:
     observations: list[ObservationRecord] = []
     for i, operation in enumerate(operations):
         slot = (operation.get('assembly') or {}).get('slot')
-        tool = tool_record(operation, assemblies.get(slot))
+        tool = tool_record(operation, assemblies.get(slot), part_is_metric)
         if tool is None:
             continue
         group = machines.get(operation.get('machine_group_id'))
