@@ -27,8 +27,8 @@ from .state import AppState
 
 RESET_WORD = 'RESET'
 SCANNING = 'Stop the folder scan first.'
-NOT_WRITABLE = ('This cutter was only read from Mastercam. It cannot be written '
-                'to a Fusion tool library yet.')
+NOT_WRITABLE = ('This cutter was only read from Mastercam. ToolGuru writes only '
+                'tools scanned in Fusion to a Fusion tool library.')
 NO_OPERATIONS = 'No operations with tools.'
 
 ScanOne = Callable[[str], tuple[DocumentRecord, list[ObservationRecord]]]

@@ -88,6 +88,19 @@ class TestToolRecord:
         assert tool['unit'] == 'millimeters'
         assert cutter.identify(tool).fields['DC'] == 12.0
 
+    def test_the_parts_unit_decides_not_the_tools_own_flag(self):
+        # A metric cutter in an inch part: Mastercam holds 6 mm as 0.2362.
+        operation = make_harvest_operation(tool={'is_metric': True, 'diameter': 0.23622})
+        tool = mastercam.tool_record(operation, None, part_is_metric=False)
+        assert tool['unit'] == 'inches'
+        assert cutter.identify(tool).fields['DC'] == 6.0
+
+    def test_an_inch_tool_in_a_metric_part_is_in_millimetres(self):
+        operation = make_harvest_operation(tool={'is_metric': False, 'diameter': 12.7})
+        tool = mastercam.tool_record(operation, None, part_is_metric=True)
+        assert tool['unit'] == 'millimeters'
+        assert cutter.identify(tool).fields['DC'] == 12.7
+
     def test_the_holder_profile_is_turned_tool_end_first(self):
         holder = tool_of()['holder']
         assert holder['description'] == 'Test Chuck'
@@ -302,6 +315,32 @@ class TestConvert:
         _, (observation,) = mastercam.convert(record)
         assert observation.feed == '900 mm/min'
         assert observation.feed_mm_min == 900.0
+
+    def test_a_metric_part_is_read_in_millimetres_whatever_its_tools_say(self):
+        record = make_harvest_record(
+            [make_harvest_operation(tool={'is_metric': False, 'diameter': 12.0}, feed_rate=900)],
+            part_is_metric=True)
+        _, (observation,) = mastercam.convert(record)
+        assert observation.unit == 'millimeters'
+        assert observation.feed == '900 mm/min'
+        assert observation.feed_mm_min == 900.0
+        assert json.loads(observation.cutter_fields)['DC'] == 12.0
+
+    def test_an_inch_part_is_read_in_inches_whatever_its_tools_say(self):
+        record = make_harvest_record(
+            [make_harvest_operation(tool={'is_metric': True, 'diameter': 0.5})],
+            part_is_metric=False)
+        _, (observation,) = mastercam.convert(record)
+        assert observation.unit == 'inches'
+        assert observation.feed_mm_min == 1016.0
+        assert json.loads(observation.cutter_fields)['DC'] == 12.7
+
+    def test_a_harvest_that_did_not_record_the_parts_unit_goes_by_the_tool(self):
+        record = make_harvest_record(
+            [make_harvest_operation(tool={'is_metric': True, 'diameter': 12.0})])
+        assert 'part_is_metric' not in record
+        _, (observation,) = mastercam.convert(record)
+        assert observation.unit == 'millimeters'
 
     def test_without_the_full_type_name_the_basic_type_is_the_strategy(self):
         operation = make_harvest_operation()

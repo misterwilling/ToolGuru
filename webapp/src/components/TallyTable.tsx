@@ -38,7 +38,7 @@ const SOURCE: Column = {
   small: true,
   hint: 'The CAM system the cutter was read from',
 }
-const NOT_WRITABLE = 'Read from Mastercam only: it cannot be written to a Fusion tool library yet.'
+const NOT_WRITABLE = 'Read from Mastercam only. ToolGuru writes only tools scanned in Fusion to a Fusion tool library.'
 const AFTER_DIAMETER: Column[] = [
   { key: 'flutes', label: 'Flutes', numeric: true },
   { key: 'description', label: 'Description', numeric: false },
