@@ -5,6 +5,7 @@ import type {
   AppState,
   Browser,
   Counts,
+  CutterDetail,
   CutterFields,
   DetailAssembly,
   DetailPreset,
@@ -295,6 +296,37 @@ export function speedsNote(speeds: Speeds): string {
     return 'None recorded. Scan the programs again to read them.'
   }
   return `${plural(without, 'operation')} ${without === 1 ? 'has' : 'have'} none recorded.`
+}
+
+export interface LibraryOption {
+  value: string // an assembly's key; '' for "whichever is usual"
+  label: string
+}
+
+/**
+ * The holders and stickouts a cutter can be written to the holding library
+ * in. The first leaves the choice to ToolGuru and says what that comes to:
+ * the usual setup, or the most recently used one when none is usual.
+ */
+export function libraryOptions(detail: CutterDetail, display: LengthUnit): LibraryOption[] {
+  const label = (assembly: DetailAssembly): string => assemblyLabel(assembly, detail.units, display)
+  const automatic = detail.assemblies.find((assembly) => assembly.assembly_key === detail.library.assembly_key)
+  const how = detail.usual.assembly_key === null ? 'Most recently used' : 'Usual setup'
+  const picksItself = detail.library.choice === null && automatic !== undefined
+  return [
+    { value: '', label: picksItself ? `${how}: ${label(automatic)}` : how },
+    ...detail.assemblies.map((assembly) => ({ value: assembly.assembly_key, label: label(assembly) })),
+  ]
+}
+
+/** The write button's text: "Write holding library (12)". */
+export function writeLibraryLabel(count: number): string {
+  return count === 0 ? 'Write holding library' : `Write holding library (${count})`
+}
+
+/** The "# Merged" figure of a tally line: blank for a cutter that stands only for itself. */
+export function mergedCount(merged: number): string {
+  return merged > 1 ? String(merged) : ''
 }
 
 /** A similar group in a line: "flat end mill · 3 cutters · 148 operations". */

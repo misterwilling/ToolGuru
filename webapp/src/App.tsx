@@ -9,7 +9,7 @@ import { SimilarScreen } from './components/SimilarScreen'
 import { Stats } from './components/Stats'
 import { TallyTable } from './components/TallyTable'
 import type { AppState, CountBy, LengthUnit } from './types'
-import { countsSummary, formatTolerance, isAppState, toleranceToMm } from './utils'
+import { countsSummary, formatTolerance, isAppState, toleranceToMm, writeLibraryLabel } from './utils'
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null)
@@ -107,6 +107,13 @@ export function App() {
           onClick={() => run(state.similar ? 'close_similar' : 'open_similar')}
         >
           Similar…
+        </button>
+        <button
+          title="Writes the ticked cutters to the “ToolGuru Holding” library in Fusion's Local tool libraries"
+          disabled={locked || state.libraryCount === 0}
+          onClick={() => run('write_library')}
+        >
+          {writeLibraryLabel(state.libraryCount)}
         </button>
         <button
           className={state.databases ? 'selected' : undefined}
@@ -216,6 +223,9 @@ export function App() {
           busy={busy}
           onClose={() => run('close_cutter')}
           onSplit={() => run('split_cutters', { cutterKey: state.detail?.cutter_key })}
+          onPick={(picked, assemblyKey) =>
+            run('pick_for_library', { cutterKey: state.detail?.cutter_key, picked, assemblyKey })
+          }
         />
       )}
       {state.tally.length === 0 ? (
@@ -232,6 +242,8 @@ export function App() {
             descriptionWidth={state.descriptionWidthPx}
             onResized={(widthPx) => run('set_description_width', { widthPx })}
             onOpen={(cutterKey) => run('show_cutter', { cutterKey })}
+            locked={locked}
+            onPick={(cutterKey, picked, assemblyKey) => run('pick_for_library', { cutterKey, picked, assemblyKey })}
           />
         </div>
       )}

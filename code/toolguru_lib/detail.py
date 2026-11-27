@@ -27,11 +27,11 @@ _ASSEMBLY_FIELDS = ('assembly_key', 'holder', 'stickout_min_mm',
                     'stickout_max_mm', 'programs', 'operations', 'time_s')
 
 
-def _most_used_first(entry: dict) -> tuple:
+def most_used_first(entry: dict) -> tuple:
     return (-entry['programs'], -entry['operations'])
 
 
-def _breakdown(group: list[dict], field: str) -> list[dict]:
+def breakdown(group: list[dict], field: str) -> list[dict]:
     """How widely each value of `field` was used: the value used in the most
     programs first. Blank values are left out."""
     seen: dict = {}
@@ -45,16 +45,16 @@ def _breakdown(group: list[dict], field: str) -> list[dict]:
     breakdown = [{'value': value, 'programs': len(entry['files']),
                   'operations': entry['operations']}
                  for value, entry in seen.items()]
-    breakdown.sort(key=lambda b: (*_most_used_first(b), b['value']))
+    breakdown.sort(key=lambda b: (*most_used_first(b), b['value']))
     return breakdown
 
 
-def _usual(entries: list[dict]) -> dict | None:
+def usual(entries: list[dict]) -> dict | None:
     """The first of `entries` (already most-used first), or None when there
     are none or the top two were used equally."""
     if not entries:
         return None
-    if len(entries) > 1 and _most_used_first(entries[0]) == _most_used_first(entries[1]):
+    if len(entries) > 1 and most_used_first(entries[0]) == most_used_first(entries[1]):
         return None
     return entries[0]
 
@@ -147,7 +147,7 @@ def _presets(group: list[dict], read: list) -> list[dict]:
     for key, entry in entries.items():
         entry['programs'] = len(entry.pop('files'))
         listed.append((key, entry))
-    listed.sort(key=lambda item: (*_most_used_first(item[1]),
+    listed.sort(key=lambda item: (*most_used_first(item[1]),
                                   tuple(str(part) for part in item[0])))
     return [entry for _, entry in listed]
 
@@ -238,11 +238,11 @@ def build_cutter_detail(rows: list[dict], cutter_key: str,
     if not group:
         return None
     assemblies = split_assemblies(group, tolerance_mm)
-    assemblies.sort(key=lambda a: (*_most_used_first(a[0]), a[0]['assembly_key']))
-    numbers = _breakdown(group, 'tool_number')
-    machines = _breakdown(group, 'machine')
-    usual_number, usual_machine = _usual(numbers), _usual(machines)
-    usual_assembly = _usual([assembly for assembly, _, _ in assemblies])
+    assemblies.sort(key=lambda a: (*most_used_first(a[0]), a[0]['assembly_key']))
+    numbers = breakdown(group, 'tool_number')
+    machines = breakdown(group, 'machine')
+    usual_number, usual_machine = usual(numbers), usual(machines)
+    usual_assembly = usual([assembly for assembly, _, _ in assemblies])
     read = _read_presets(group)
     return {
         **summarize(group),

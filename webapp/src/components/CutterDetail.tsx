@@ -8,6 +8,7 @@ import {
   formatDate,
   formatDuration,
   formatStickout,
+  libraryOptions,
   presetHeadings,
   presetKey,
   presetValues,
@@ -24,6 +25,8 @@ interface Props {
   onClose: () => void
   /** Count the cutters this line was merged from apart again. */
   onSplit: () => void
+  /** Put the cutter in the holding library, or take it out. `assemblyKey` null means its usual setup. */
+  onPick: (picked: boolean, assemblyKey: string | null) => void
 }
 
 function Tile({ label, children }: { label: string; children: ReactNode }) {
@@ -80,7 +83,7 @@ function Value({ usual, children }: { usual: boolean; children: ReactNode }) {
 const NONE = <span className="muted">—</span>
 
 /** One cutter: its figures, its geometry, its usual setup, and every program compared against that. */
-export function CutterDetail({ detail, display, picture, busy, onClose, onSplit }: Props) {
+export function CutterDetail({ detail, display, picture, busy, onClose, onSplit, onPick }: Props) {
   const geometry = cutterFieldRows(detail.fields, detail.units, display)
   const otherUnits = geometry.some((row) => row.other !== '')
   const speeds = speedRows(detail.speeds, display)
@@ -110,6 +113,32 @@ export function CutterDetail({ detail, display, picture, busy, onClose, onSplit 
           </Tile>
           <Tile label="Last used">{formatDate(detail.last_used)}</Tile>
         </div>
+      </div>
+
+      <div className="actions library">
+        <label>
+          <input
+            type="checkbox"
+            checked={detail.library.picked}
+            disabled={busy}
+            onChange={(event) => onPick(event.target.checked, null)}
+          />{' '}
+          Write to the holding library
+        </label>
+        {detail.library.picked && (
+          <>
+            <span>with</span>
+            <select
+              value={detail.library.choice ?? ''}
+              disabled={busy}
+              onChange={(event) => onPick(true, event.target.value || null)}
+            >
+              {libraryOptions(detail, display).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
 
       <div className="columns">

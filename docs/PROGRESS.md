@@ -290,10 +290,41 @@ pushed.
     merging one database into another does not bring its decisions along.
   - Palette: a "Similar…" button opens the screen (suggestions with "Treat
     as same" and "Not the same", then the merged groups with "Split"). A
-    merged tally line carries an "N merged" tag, the cutter count in the
+    merged tally line shows its count in a narrow "Merged" column, the cutter count in the
     header follows the merges, and the detail has a "Merged from" table.
   - Tests: `toolguru_tests/test_similar.py`, `utils.test.ts`. In-Fusion: 30
     of 30 pass on the new hash.
+
+- Holding library (2026-11-26, same branch). Milestone
+  4, slice 4, the last. The owner's choices: only cutters he ticks; one
+  entry per cutter, in its usual setup unless he picks another; every
+  preset on the tool; the usual tool number.
+  - Probe: `importToolLibrary(library, localRoot, name)` creates the
+    library EMPTY and returns its URL; `updateToolLibrary(url, library)` is
+    what writes the tools. Importing a name that exists makes "<name> 1",
+    so the old library is deleted first. `URL.join(name)` addresses it for
+    `doesPathExist`, `toolLibraryAtURL` and `deleteAsset`. All 308 distinct
+    tool records in the owner's data are accepted by `Tool.createFromJson`.
+    A length read back from a written library can be a hair off (0.5 in
+    came back 0.49999999999999994).
+  - Picks are stored in the data file (`library_picks`: scanned cutter key,
+    chosen assembly or null for "usual"). `toolguru_lib/holding.py` works
+    out what to write: the chosen assembly if it still exists, else the
+    usual one, else the most recently used; the tool record from that
+    assembly's latest program (after a merge, preferring the cutter that
+    names the line), with the cutter's usual tool number put on it.
+    `toolguru_lib/library.py` writes "ToolGuru Holding" in Local, in place
+    of the one before. Reset data clears the picks and deletes the library.
+    Loading a saved database brings that database's picks and leaves the
+    written library as it is until it is written again.
+  - Palette: a "Lib" tick on each tally line (counting by assembly, the
+    tick sits on the assembly that will be written, and ticking another
+    line picks that assembly), "Write holding library (N)", and in the
+    detail a tick with a list of the cutter's holders and stickouts.
+  - Tests: `toolguru_tests/test_holding.py`, `utils.test.ts`, and in Fusion
+    `toolguru_fusion_tests/test_library.py`, which writes and removes a
+    library of its own name. In-Fusion: 35 of 35 pass.
+  - Not yet done by the owner: writing the real holding library.
 
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:
@@ -301,8 +332,7 @@ Milestone 4, one slice at a time on `m4-cutter-detail`:
 2. Feeds and speeds as numbers — built, see In flight. Needs a rescan to
    fill.
 3. Similar tools — built, see In flight.
-4. Holding library: write the collapsed cutters to a Local tool library;
-   resetting the data removes it.
+4. Holding library — built, see In flight. Milestone 4 is complete.
 
 The sweep can carry on to further folders at any time. Later: 5 compare
 a program against the Hub standard (by assembly, with the tool-number

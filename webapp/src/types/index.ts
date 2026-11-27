@@ -21,6 +21,7 @@ export interface TallyRow {
   tool_numbers: number[]
   machines: string[]
   units: string[]
+  in_library: boolean // ticked for the holding library
   merged: number // scanned cutters this line stands for; more than 1 after "treat as same"
   // Present only when counting by assembly.
   assembly_key?: string
@@ -149,6 +150,9 @@ export interface SimilarView {
 export interface CutterDetail extends TallyRow {
   fields: CutterFields
   variants: { differs: string[]; members: SimilarMember[] } | null // what a merged line was merged from
+  /** Its place in the holding library: `choice` is the assembly picked for it (null: the usual one),
+   *  `assembly_key` the one it is, or would be, written in. */
+  library: { picked: boolean; choice: string | null; assembly_key: string }
   speeds: Speeds
   presets: DetailPreset[]
   usual: { tool_number: number | null; machine: string | null; assembly_key: string | null }
@@ -226,6 +230,7 @@ export interface AppState {
   detail: CutterDetail | null // the cutter opened from the tally, if any
   databases: SavedDatabase[] | null // the saved databases, while their panel is open
   similar: SimilarView | null // the similar-cutters screen, while it is open
+  libraryCount: number // cutters ticked for the holding library
   lastScan: LastScan | null
   browser: Browser | null
   confirmScan: ConfirmScan | null
@@ -237,6 +242,7 @@ export interface AppState {
 export type SortKey =
   | 'tool_type'
   | 'description'
+  | 'merged'
   | 'diameter_mm'
   | 'flutes'
   | 'programs'

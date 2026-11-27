@@ -10,6 +10,9 @@ import {
   draggedWidth,
   familiesIn,
   groupSummary,
+  libraryOptions,
+  writeLibraryLabel,
+  mergedCount,
   variantCells,
   variantHeadings,
   findSaved,
@@ -39,12 +42,13 @@ import {
   unitHeading,
   validChoice,
 } from './utils'
-import type { TallyRow } from './types'
+import type { CutterDetail, TallyRow } from './types'
 
 function makeRow(overrides?: Partial<TallyRow>): TallyRow {
   return {
     cutter_key: 'aaaa',
     merged: 1,
+    in_library: false,
     tool_type: 'flat end mill',
     family: 'milling',
     description: '1/2 flat end mill',
@@ -749,5 +753,69 @@ describe('similar cutters', () => {
 
   it('shows a flute count as it is', () => {
     expect(variantCells(first, first, ['NOF'], 'in')).toEqual([{ text: '4', differs: false }])
+  })
+})
+
+describe('the merged column', () => {
+  it('is blank for a cutter that stands only for itself', () => {
+    expect(mergedCount(1)).toBe('')
+  })
+
+  it('counts the cutters a merged line stands for', () => {
+    expect(mergedCount(3)).toBe('3')
+  })
+
+  it('sorts merged lines to the top, biggest group first', () => {
+    const rows = [
+      makeRow({ cutter_key: 'a', merged: 1 }),
+      makeRow({ cutter_key: 'b', merged: 3 }),
+      makeRow({ cutter_key: 'c', merged: 2 }),
+    ]
+    expect(sortTally(rows, toggleSort({ key: 'operations', direction: 'desc' }, 'merged')).map((r) => r.cutter_key)).toEqual([
+      'b', 'c', 'a',
+    ])
+  })
+})
+
+describe('the holding library', () => {
+  const assembly = (key: string, holder: string, stickout: number) => ({
+    assembly_key: key,
+    holder,
+    stickout_min_mm: stickout,
+    stickout_max_mm: stickout,
+    programs: 1,
+    operations: 1,
+    time_s: 0,
+  })
+  const detail = (usual: string | null, choice: string | null, written: string) =>
+    ({
+      units: ['inches'],
+      assemblies: [assembly('one', 'Short holder', 25.4), assembly('two', 'Long holder', 50.8)],
+      usual: { tool_number: null, machine: null, assembly_key: usual },
+      library: { picked: true, choice, assembly_key: written },
+    }) as unknown as CutterDetail
+
+  it('offers the usual setup first and says which one that is', () => {
+    expect(libraryOptions(detail('one', null, 'one'), 'in')).toEqual([
+      { value: '', label: 'Usual setup: Short holder, 1.000 in' },
+      { value: 'one', label: 'Short holder, 1.000 in' },
+      { value: 'two', label: 'Long holder, 2.000 in' },
+    ])
+  })
+
+  it('says most recently used when no setup is the usual one', () => {
+    expect(libraryOptions(detail(null, null, 'two'), 'in')[0]).toEqual({
+      value: '',
+      label: 'Most recently used: Long holder, 2.000 in',
+    })
+  })
+
+  it('does not describe the automatic choice while another is picked', () => {
+    expect(libraryOptions(detail('one', 'two', 'two'), 'in')[0]).toEqual({ value: '', label: 'Usual setup' })
+  })
+
+  it('counts the ticked cutters on the write button', () => {
+    expect(writeLibraryLabel(0)).toBe('Write holding library')
+    expect(writeLibraryLabel(12)).toBe('Write holding library (12)')
   })
 })

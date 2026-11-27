@@ -11,6 +11,7 @@ import {
   formatDate,
   formatDuration,
   formatToolNumbers,
+  mergedCount,
   otherUnit,
   rowKey,
   sortTally,
@@ -26,6 +27,7 @@ const BEFORE_DIAMETER: Column[] = [{ key: 'tool_type', label: 'Type', numeric: f
 const AFTER_DIAMETER: Column[] = [
   { key: 'flutes', label: 'Flutes', numeric: true },
   { key: 'description', label: 'Description', numeric: false },
+  { key: 'merged', label: 'Merged', numeric: true, small: true, hint: 'Similar cutters you chose to treat as the same' },
   { key: 'programs', label: 'PGMs', numeric: true, hint: 'Programs that used the tool' },
   { key: 'operations', label: 'OPs', numeric: true, hint: 'Operations that used the tool' },
   { key: 'time_s', label: 'Cutting time', numeric: true },
@@ -39,6 +41,8 @@ interface Column {
   numeric: boolean
   /** Shown when the pointer rests on a shortened heading. */
   hint?: string
+  /** A narrow column: its heading is set smaller so it takes less room. */
+  small?: boolean
 }
 
 interface Props {
@@ -51,9 +55,22 @@ interface Props {
   onResized: (widthPx: number) => void
   /** Open the detail of the cutter in the clicked row. */
   onOpen: (cutterKey: string) => void
+  /** Ticks cannot be changed just now. */
+  locked: boolean
+  /** Tick or untick a row for the holding library, in that row's assembly when counting by assembly. */
+  onPick: (cutterKey: string, picked: boolean, assemblyKey: string | null) => void
 }
 
-export function TallyTable({ rows, countBy, display, descriptionWidth, onResized, onOpen }: Props) {
+export function TallyTable({
+  rows,
+  countBy,
+  display,
+  descriptionWidth,
+  onResized,
+  onOpen,
+  locked,
+  onPick,
+}: Props) {
   const [sort, setSort] = useState<SortState>({ key: 'operations', direction: 'desc' })
   const [text, setText] = useState('')
   const [picked, setPicked] = useState('all')
@@ -98,7 +115,7 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
   const heading = (column: Column) => (
     <th
       key={column.key}
-      className={column.numeric ? 'num' : undefined}
+      className={[column.numeric && 'num', column.small && 'small'].filter(Boolean).join(' ') || undefined}
       title={column.hint}
       onClick={() => setSort(toggleSort(sort, column.key))}
     >
@@ -161,6 +178,7 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
       <table style={{ '--description-width': `${width}px` } as CSSProperties}>
         <thead>
           <tr>
+            <th className="small pick" title="Tick the cutters to write to the holding library">Lib</th>
             {BEFORE_DIAMETER.map(heading)}
             {heading(diameter)}
             {otherDiameters && (
@@ -179,20 +197,24 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
         <tbody>
           {shown.map(({ row, diameter: dia, stickout }) => (
             <tr key={rowKey(row)} className="clickable" onClick={() => onOpen(row.cutter_key)}>
+              {/* A click on the tick must not also open the row. */}
+              <td className="pick" onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  title="Write this cutter to the holding library"
+                  checked={row.in_library}
+                  disabled={locked}
+                  onChange={(event) => onPick(row.cutter_key, event.target.checked, row.assembly_key ?? null)}
+                />
+              </td>
               <td>{row.tool_type}</td>
               <td className="num main">{dia.shown}</td>
               {otherDiameters && <td className="other">{dia.other}</td>}
               <td className="num">{row.flutes ?? ''}</td>
               <td>
-                <div className="clip" title={row.description}>
-                  {row.merged > 1 && (
-                    <span className="tag lead" title="Similar cutters you chose to treat as the same">
-                      {row.merged} merged
-                    </span>
-                  )}
-                  {row.description}
-                </div>
+                <div className="clip" title={row.description}>{row.description}</div>
               </td>
+              <td className="num">{row.merged > 1 && <span className="tag count">{mergedCount(row.merged)}</span>}</td>
               <td className="num">{row.programs}</td>
               <td className="num">{row.operations}</td>
               <td className="num">

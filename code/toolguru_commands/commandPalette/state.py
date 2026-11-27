@@ -35,11 +35,13 @@ class AppState:
     def serialize(self, counts: dict, tally: list[dict], settings: Settings,
                   job: dict | None = None, detail: dict | None = None,
                   databases: list[dict] | None = None,
-                  similar: dict | None = None) -> dict:
+                  similar: dict | None = None,
+                  library_count: int = 0) -> dict:
         """`job` is the folder scan under way (see Store.job), if any.
         `detail` is the open cutter's detail (see detail.build_cutter_detail).
         `databases` is the list of saved databases while its panel is open.
-        `similar` is the similar-cutters screen's content while it is open."""
+        `similar` is the similar-cutters screen's content while it is open.
+        `library_count` is how many cutters are picked for the holding library."""
         proposed = self.proposed_scan
         return {
             'counts': dict(counts),
@@ -51,6 +53,7 @@ class AppState:
             'detail': detail,
             'databases': databases,
             'similar': similar,
+            'libraryCount': library_count,
             'lastScan': dict(self.last_scan) if self.last_scan else None,
             'browser': self.browser,
             'confirmScan': ({'folder': proposed['folder'],

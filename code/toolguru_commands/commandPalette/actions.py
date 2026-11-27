@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from toolguru_lib import saved
+from toolguru_lib import holding, saved
 from toolguru_lib import settings as user_settings
 from toolguru_lib import similar
 from toolguru_lib import store as scan_store
@@ -47,12 +47,24 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
         tally = build_assembly_tally(rows, settings.stickout_tolerance_mm)
     else:
         tally = build_tally(rows)
+    library = holding.entries(
+        rows, store.library_picks(), settings.stickout_tolerance_mm)
+    for line in tally:
+        written = library.get(line['cutter_key'])
+        # Counting by assembly, only the assembly that will be written is ticked.
+        line['in_library'] = written is not None and (
+            'assembly_key' not in line
+            or line['assembly_key'] == written['assembly_key'])
     detail = None
     if state.selected_cutter is not None:
         # A cutter that has since been merged is found under its group's line.
         shown = similar.shown_key(scanned, merged, state.selected_cutter)
         detail = build_cutter_detail(
             rows, shown, settings.stickout_tolerance_mm)
+        if detail is not None:
+            detail['library'] = _detail_library(
+                rows, store.library_picks(), shown, library,
+                settings.stickout_tolerance_mm)
     databases = saved.list_saved(base_dir) if state.databases_open else None
     similar_view = None
     if state.similar_open:
@@ -63,7 +75,25 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
     counts = store.counts()
     counts['cutters'] = len({row['cutter_key'] for row in rows})   # after merging
     return state.serialize(
-        counts, tally, settings, store.job(), detail, databases, similar_view)
+        counts, tally, settings, store.job(), detail, databases, similar_view,
+        len(library))
+
+
+def _detail_library(rows: list[dict], picks: dict[str, str | None],
+                    cutter_key: str, library: dict[str, dict],
+                    tolerance_mm: float) -> dict:
+    """The open cutter's place in the holding library: whether it is picked,
+    the assembly chosen for it (None for "the usual one"), and the assembly
+    it is, or would be, written in."""
+    keys = sorted(holding.line_keys(rows, cutter_key) & picks.keys())
+    written = library.get(cutter_key) or holding.entry(
+        [row for row in rows if row['cutter_key'] == cutter_key], None,
+        tolerance_mm)
+    return {
+        'picked': bool(keys),
+        'choice': next((picks[key] for key in keys if picks[key] is not None), None),
+        'assembly_key': written['assembly_key'],
+    }
 
 
 def refuse_while_scanning(state: AppState) -> bool:
@@ -231,6 +261,60 @@ def not_similar(state: AppState, signature: str,
         state.error = 'No suggestion was named.'
         return
     _store(base_dir).mark_not_similar(signature)
+
+
+# --- Holding library ------------------------------------------------------------
+# The user ticks cutters; "Write holding library" puts them in a tool library
+# in Fusion. Only the picks are stored here; entry.py does the writing.
+
+def pick_for_library(state: AppState, cutter_key: str, picked: bool,
+                     assembly_key: str | None = None,
+                     base_dir: Path | None = None) -> None:
+    """Tick or untick a tally line for the holding library. `assembly_key`
+    names the holder and stickout to write it in; None means the usual one."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    store = _store(base_dir)
+    rows = similar.apply_merges(store.observation_rows(), store.merged_cutters())
+    keys = sorted(holding.line_keys(rows, cutter_key))
+    if not keys:
+        state.error = 'That cutter is not in the data.'
+        return
+    if not picked:
+        store.unpick_for_library(keys)
+        return
+    tolerance = user_settings.load(base_dir).stickout_tolerance_mm
+    if (assembly_key is not None
+            and assembly_key not in holding.assembly_keys(rows, cutter_key, tolerance)):
+        state.error = 'That holder and stickout is no longer one of this cutter\'s.'
+        return
+    store.pick_for_library(keys, assembly_key)
+
+
+def library_tools(base_dir: Path | None = None) -> list[str]:
+    """The picked cutters as tool records, ready to write to Fusion."""
+    store = _store(base_dir)
+    rows = similar.apply_merges(store.observation_rows(), store.merged_cutters())
+    tolerance = user_settings.load(base_dir).stickout_tolerance_mm
+    return [entry['tool_json'] for entry in
+            holding.entries(rows, store.library_picks(), tolerance).values()]
+
+
+def library_written(state: AppState, asked: int, written: int) -> None:
+    state.begin_action()
+    if written != asked:
+        state.error = (f'Fusion wrote {written} of {asked} tools to '
+                       f'“{holding.LIBRARY_NAME}”. See View → Text Commands.')
+        return
+    tools = 'tool' if written == 1 else 'tools'
+    state.notice = (f'Wrote {written} {tools} to “{holding.LIBRARY_NAME}” in '
+                    'your Local tool libraries. It replaces the one written before.')
+
+
+def library_failed(state: AppState, message: str) -> None:
+    state.begin_action()
+    state.error = message
 
 
 # --- Saved databases ----------------------------------------------------------

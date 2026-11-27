@@ -10,7 +10,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from toolguru_lib import extract, hub, theme, tool_pictures
+from toolguru_lib import extract, holding, hub, library, theme, tool_pictures
 from toolguru_lib.records import ScanError
 from toolguru_lib.fusion360utils import event_utils as futil
 from toolguru_lib.fusion360utils import general_utils as gutil
@@ -205,6 +205,9 @@ def _handle_scan_active(data: dict) -> None:
 def _handle_reset_data(data: dict) -> None:
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     actions.reset_data(state, str(data.get('confirm', '')), stamp)
+    if not state.error:
+        # The holding library is made from the data, so it goes with it.
+        library.delete_library(holding.LIBRARY_NAME)
 
 
 # --- Similar cutters ------------------------------------------------------------
@@ -227,6 +230,33 @@ def _handle_split_cutters(data: dict) -> None:
 
 def _handle_not_similar(data: dict) -> None:
     actions.not_similar(state, str(data.get('signature', '')))
+
+
+# --- Holding library --------------------------------------------------------------
+
+def _handle_pick_for_library(data: dict) -> None:
+    assembly_key = data.get('assemblyKey')
+    actions.pick_for_library(
+        state, str(data.get('cutterKey', '')), bool(data.get('picked')),
+        str(assembly_key) if assembly_key else None)
+
+
+def _handle_write_library(data: dict) -> None:
+    if actions.refuse_while_scanning(state):
+        return
+    tools = actions.library_tools()
+    if not tools:
+        actions.library_failed(state, 'Tick at least one cutter to write a library.')
+        return
+    try:
+        written = library.write_library(holding.LIBRARY_NAME, tools)
+    except Exception:
+        gutil.log(f'Could not write the holding library:\n{traceback.format_exc()}',
+                  force_console=True)
+        actions.library_failed(
+            state, 'Fusion could not write the library. See View → Text Commands.')
+        return
+    actions.library_written(state, len(tools), written)
 
 
 # --- Saved databases ------------------------------------------------------------
@@ -343,6 +373,8 @@ _handlers: dict = {
     'merge_cutters': _handle_merge_cutters,
     'split_cutters': _handle_split_cutters,
     'not_similar': _handle_not_similar,
+    'pick_for_library': _handle_pick_for_library,
+    'write_library': _handle_write_library,
     'open_databases': _handle_open_databases,
     'close_databases': _handle_close_databases,
     'save_database': _handle_save_database,

@@ -421,7 +421,13 @@ h3 {
   color: var(--link);
   font-size: 11px;
 }
-.tag.lead { margin: 0 6px 0 0; }
+.tag.count { margin: 0; }
+/* The tick that puts a cutter in the holding library. */
+th.pick, td.pick { text-align: center; padding-left: 6px; padding-right: 2px; cursor: default; }
+input[type='checkbox'] { accent-color: var(--accent); margin: 0; padding: 0; vertical-align: middle; }
+.detail .actions.library { margin-bottom: 12px; }
+/* A narrow column's heading, set smaller so the column stays narrow. */
+th.small { font-size: 10.5px; padding-left: 2px; padding-right: 4px; }
 .panel-head .actions { margin: 0; }
 .detail .note {
   font-weight: 400;

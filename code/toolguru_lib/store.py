@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS merged_cutters (
 CREATE TABLE IF NOT EXISTS not_similar (
     signature TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS library_picks (
+    cutter_key TEXT PRIMARY KEY,
+    assembly_key TEXT
+);
 CREATE TABLE IF NOT EXISTS scan_job (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     folder TEXT NOT NULL
@@ -191,6 +195,7 @@ class Store:
             conn.execute('DELETE FROM documents')
             conn.execute('DELETE FROM merged_cutters')
             conn.execute('DELETE FROM not_similar')
+            conn.execute('DELETE FROM library_picks')
             conn.execute('DELETE FROM scan_items')
             conn.execute('DELETE FROM scan_job')
 
@@ -255,6 +260,28 @@ class Store:
         with closing(self._connect()) as conn, conn:
             conn.execute('INSERT OR IGNORE INTO not_similar (signature) VALUES (?)',
                          (signature,))
+
+    # --- Cutters picked for the holding library -------------------------------
+
+    def library_picks(self) -> dict[str, str | None]:
+        """Each picked cutter's key with the assembly chosen for it; None
+        means the usual one (see holding.entries)."""
+        with closing(self._connect()) as conn:
+            return {row['cutter_key']: row['assembly_key'] for row in conn.execute(
+                'SELECT cutter_key, assembly_key FROM library_picks')}
+
+    def pick_for_library(self, cutter_keys: list[str],
+                         assembly_key: str | None) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                'INSERT INTO library_picks (cutter_key, assembly_key) VALUES (?, ?) '
+                'ON CONFLICT(cutter_key) DO UPDATE SET assembly_key = excluded.assembly_key',
+                [(key, assembly_key) for key in cutter_keys])
+
+    def unpick_for_library(self, cutter_keys: list[str]) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.executemany('DELETE FROM library_picks WHERE cutter_key = ?',
+                             [(key,) for key in cutter_keys])
 
     def merge_from(self, other: Path) -> dict[str, int]:
         """Add another data file's programs to this one.
