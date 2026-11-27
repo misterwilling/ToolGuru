@@ -5,7 +5,8 @@ import type {
   AppState,
   Browser,
   Counts,
-  Dataset,
+  CutterFields,
+  DetailAssembly,
   LengthUnit,
   ScanJob,
   SortKey,
@@ -17,7 +18,7 @@ const MM_PER_INCH = 25.4
 const TEXT_KEYS: SortKey[] = ['tool_type', 'description']
 
 export function isAppState(value: unknown): value is AppState {
-  return typeof value === 'object' && value !== null && 'dataset' in value && 'tally' in value
+  return typeof value === 'object' && value !== null && 'counts' in value && 'tally' in value
 }
 
 export function formatDuration(seconds: number): string {
@@ -31,12 +32,50 @@ export function formatDuration(seconds: number): string {
   return `${secs}s`
 }
 
-/** Millimetres always; inches as well when the cutter was ever entered in inches. */
-export function formatDiameter(mm: number | null, units: string[]): string {
-  if (mm === null) return '—'
-  const metric = `${mm.toFixed(3)} mm`
-  if (!units.includes('inches')) return metric
-  return `${metric} / ${(mm / MM_PER_INCH).toFixed(4)} in`
+// Lengths are stored in millimetres and shown in the unit the user chose. A
+// tool that was entered in the other unit shows that one too, in brackets:
+// "0.197 in (5.00 mm)" for a metric drill when inches are shown. Inches are
+// shown to three decimal places and millimetres to two.
+
+/**
+ * A length ready for a table. `shown` is in the unit the user chose; `other`
+ * is the bracketed other unit, or '' when the tool was not entered in it.
+ * Kept apart so each can sit in its own column: every `shown` value then
+ * lines up, whether or not the row has an `other`.
+ */
+export interface LengthParts {
+  shown: string
+  other: string
+}
+
+const NO_LENGTH: LengthParts = { shown: '—', other: '' }
+
+export function otherUnit(display: LengthUnit): LengthUnit {
+  return display === 'in' ? 'mm' : 'in'
+}
+
+function inUnit(mm: number, unit: LengthUnit): string {
+  return unit === 'in' ? (mm / MM_PER_INCH).toFixed(3) : mm.toFixed(2)
+}
+
+/** One length, or a range when `max` differs from `min`. `both` adds the other unit. */
+function lengthParts(min: number, max: number, display: LengthUnit, both: boolean): LengthParts {
+  const text = (unit: LengthUnit): string =>
+    `${min === max ? inUnit(min, unit) : `${inUnit(min, unit)}–${inUnit(max, unit)}`} ${unit}`
+  return { shown: text(display), other: both ? `(${text(otherUnit(display))})` : '' }
+}
+
+function joined(parts: LengthParts): string {
+  return parts.other === '' ? parts.shown : `${parts.shown} ${parts.other}`
+}
+
+/** True when the tool was ever entered in the unit that is not the one shown. */
+function enteredInOtherUnit(units: string[], display: LengthUnit): boolean {
+  return units.includes(display === 'in' ? 'millimeters' : 'inches')
+}
+
+export function diameterParts(mm: number | null, units: string[], display: LengthUnit): LengthParts {
+  return mm === null ? NO_LENGTH : lengthParts(mm, mm, display, enteredInOtherUnit(units, display))
 }
 
 /** One row per cutter, or per assembly when counting by assembly. */
@@ -44,26 +83,30 @@ export function rowKey(row: TallyRow): string {
   return row.assembly_key ?? row.cutter_key
 }
 
-function lengthText(mm: number, inches: boolean): string {
-  return inches ? `${mm.toFixed(3)} mm / ${(mm / MM_PER_INCH).toFixed(4)} in` : `${mm.toFixed(3)} mm`
+/** A single stickout, or the range an assembly row covers. */
+export function stickoutParts(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  units: string[],
+  display: LengthUnit,
+): LengthParts {
+  if (min === null || min === undefined || max === null || max === undefined) return NO_LENGTH
+  return lengthParts(min, max, display, enteredInOtherUnit(units, display))
 }
 
-/** A single stickout, or the range an assembly row covers. */
+/** A stickout as one piece of text, for a sentence or a label. */
 export function formatStickout(
   min: number | null | undefined,
   max: number | null | undefined,
   units: string[],
+  display: LengthUnit,
 ): string {
-  if (min === null || min === undefined || max === null || max === undefined) return '—'
-  const inches = units.includes('inches')
-  if (min === max) return lengthText(min, inches)
-  const metric = `${min.toFixed(3)}–${max.toFixed(3)} mm`
-  if (!inches) return metric
-  return `${metric} / ${(min / MM_PER_INCH).toFixed(4)}–${(max / MM_PER_INCH).toFixed(4)} in`
+  return joined(stickoutParts(min, max, units, display))
 }
 
-export function formatTolerance(mm: number): string {
-  return lengthText(mm, true)
+/** A tolerance belongs to no tool, so it always shows both units. */
+export function formatTolerance(mm: number, display: LengthUnit): string {
+  return joined(lengthParts(mm, mm, display, true))
 }
 
 /** What the user typed as a tolerance, in millimetres; null when it is not zero or more. */
@@ -85,12 +128,6 @@ export function formatToolNumbers(numbers: number[]): string {
   return numbers.map((n) => `T${n}`).join(', ')
 }
 
-export function datasetBadge(dataset: Dataset): { label: string; tone: Dataset } {
-  return dataset === 'trial'
-    ? { label: 'TRIAL DATA', tone: 'trial' }
-    : { label: 'MAIN DATA', tone: 'main' }
-}
-
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
@@ -102,6 +139,60 @@ export function countsSummary(counts: Counts, assemblies?: number): string {
       ? plural(counts.cutters, 'cutter')
       : `${assemblies} ${assemblies === 1 ? 'assembly' : 'assemblies'}`
   return [plural(counts.documents, 'program'), plural(counts.observations, 'operation'), tools].join(', ')
+}
+
+const FIELD_ROWS: { key: string; label: string; kind: 'length' | 'angle' | 'count' | 'text' }[] = [
+  { key: 'DC', label: 'Diameter', kind: 'length' },
+  { key: 'NOF', label: 'Flutes', kind: 'count' },
+  { key: 'LCF', label: 'Flute length', kind: 'length' },
+  { key: 'shoulder-length', label: 'Shoulder length', kind: 'length' },
+  { key: 'OAL', label: 'Overall length', kind: 'length' },
+  { key: 'SFDM', label: 'Shaft diameter', kind: 'length' },
+  { key: 'RE', label: 'Corner radius', kind: 'length' },
+  { key: 'tip-diameter', label: 'Tip diameter', kind: 'length' },
+  { key: 'TP', label: 'Thread pitch', kind: 'length' },
+  { key: 'TA', label: 'Taper angle', kind: 'angle' },
+  { key: 'SIG', label: 'Tip angle', kind: 'angle' },
+  { key: 'material', label: 'Material', kind: 'text' },
+]
+
+/** One line of a cutter's geometry. `other` is a length's other unit (see LengthParts), '' otherwise. */
+export interface FieldRow {
+  label: string
+  value: string
+  other: string
+}
+
+/** A cutter's geometry as labelled lines, in a fixed order. Fields the cutter does not have are left out. */
+export function cutterFieldRows(fields: CutterFields, units: string[], display: LengthUnit): FieldRow[] {
+  const both = enteredInOtherUnit(units, display)
+  const rows: FieldRow[] = []
+  for (const { key, label, kind } of FIELD_ROWS) {
+    const value = fields[key]
+    if (value === undefined || value === '') continue
+    if (kind === 'text') rows.push({ label, value: String(value), other: '' })
+    else if (typeof value !== 'number') continue
+    else if (kind === 'length') {
+      const parts = lengthParts(value, value, display, both)
+      rows.push({ label, value: parts.shown, other: parts.other })
+    } else if (kind === 'angle') rows.push({ label, value: `${Number(value.toFixed(3))}°`, other: '' })
+    else rows.push({ label, value: String(value), other: '' })
+  }
+  return rows
+}
+
+/** "flat end mill · carbide". A material Fusion left unspecified is not shown. */
+export function cutterSubtitle(cutter: { tool_type: string; fields: CutterFields }): string {
+  const material = cutter.fields.material
+  const known = typeof material === 'string' && material !== '' && material !== 'unspecified'
+  return known ? `${cutter.tool_type} · ${material}` : cutter.tool_type
+}
+
+/** "Test Holder, 1.500 in": one holder and stickout a cutter ran in. */
+export function assemblyLabel(assembly: DetailAssembly, units: string[], display: LengthUnit): string {
+  const holder = assembly.holder || 'no holder'
+  if (assembly.stickout_min_mm === null) return holder
+  return `${holder}, ${formatStickout(assembly.stickout_min_mm, assembly.stickout_max_mm, units, display)}`
 }
 
 /** Same column flips direction; a new column starts A–Z for text, largest first for numbers. */
@@ -129,11 +220,31 @@ export function sortTally(rows: TallyRow[], sort: SortState): TallyRow[] {
   })
 }
 
-/** `family` is a family name or 'all'. Text matches description, type, holder, or a tool number (7 or T7). */
-export function filterTally(rows: TallyRow[], text: string, family: string): TallyRow[] {
+// What the tally's drop-down narrows the list to: 'all', one family
+// ('family:milling') or one tool type ('type:drill').
+
+export function familyChoice(family: string): string {
+  return `family:${family}`
+}
+
+export function typeChoice(toolType: string): string {
+  return `type:${toolType}`
+}
+
+function matchesChoice(row: TallyRow, choice: string): boolean {
+  return choice === 'all' || choice === familyChoice(row.family) || choice === typeChoice(row.tool_type)
+}
+
+/** `choice`, or 'all' when no row matches it any more: the data changed under the drop-down. */
+export function validChoice(rows: TallyRow[], choice: string): string {
+  return rows.some((row) => matchesChoice(row, choice)) ? choice : 'all'
+}
+
+/** `choice` is a drop-down choice (see above). Text matches description, type, holder, or a tool number (7 or T7). */
+export function filterTally(rows: TallyRow[], text: string, choice: string): TallyRow[] {
   const needle = text.trim().toLowerCase()
   return rows.filter((row) => {
-    if (family !== 'all' && row.family !== family) return false
+    if (!matchesChoice(row, choice)) return false
     if (needle === '') return true
     const haystack = [
       row.description,
@@ -147,6 +258,34 @@ export function filterTally(rows: TallyRow[], text: string, family: string): Tal
 
 export function familiesIn(rows: TallyRow[]): string[] {
   return [...new Set(rows.map((row) => row.family))].sort()
+}
+
+// The families whose tool types are offered one by one in the drop-down.
+const FAMILIES_BY_TYPE = ['milling', 'hole making']
+
+/**
+ * The milling and hole making tool types found in `rows`, A to Z within each
+ * family. Only what the scans found is listed, so a type Fusion offers but no
+ * program used never appears, and a family with nothing found is left out.
+ */
+export function typesByFamily(rows: TallyRow[]): { family: string; types: string[] }[] {
+  return FAMILIES_BY_TYPE.map((family) => ({
+    family,
+    types: [...new Set(rows.filter((row) => row.family === family).map((row) => row.tool_type))].sort(),
+  })).filter((group) => group.types.length > 0)
+}
+
+/** How narrow and how wide the description column may be, in pixels. */
+export const DESCRIPTION_WIDTH = { min: 80, max: 1000 }
+
+/** A width for the description column: a whole number of pixels inside its limits. */
+export function clampWidth(px: number): number {
+  return Math.min(DESCRIPTION_WIDTH.max, Math.max(DESCRIPTION_WIDTH.min, Math.round(px)))
+}
+
+/** The column's width after its edge is dragged `moved` pixels from where it was `start` wide. */
+export function draggedWidth(start: number, moved: number): number {
+  return clampWidth(start + moved)
 }
 
 /** How far a folder scan has got, 0 to 100. An empty scan is complete. */

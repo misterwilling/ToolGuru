@@ -24,7 +24,7 @@ def _most_common(values: list[str]) -> str:
     return min(v for v, n in counts.items() if n == top)
 
 
-def _summarize(group: list[dict]) -> dict:
+def summarize(group: list[dict]) -> dict:
     """The usage figures for one group of observations of the same cutter."""
     cutter_fields = json.loads(group[0]['cutter_fields'])
     times = [r['cutting_time_s'] for r in group
@@ -57,7 +57,7 @@ def build_tally(rows: list[dict]) -> list[dict]:
     for row in rows:
         groups.setdefault(row['cutter_key'], []).append(row)
 
-    tally = [_summarize(group) for group in groups.values()]
+    tally = [summarize(group) for group in groups.values()]
     tally.sort(key=lambda t: (-t['operations'], t['cutter_key']))
     return tally
 
@@ -124,12 +124,14 @@ def _stickout_bands(group: list[dict], tolerance_mm: float) -> list[list[dict]]:
     return bands
 
 
-def build_assembly_tally(rows: list[dict], tolerance_mm: float) -> list[dict]:
-    """One dict per assembly: the same cutter, in the same holder, with
-    stickouts within `tolerance_mm` of each other. Most-used first.
+def split_assemblies(rows: list[dict],
+                     tolerance_mm: float) -> list[tuple[dict, str, list[dict]]]:
+    """Split observation rows into assemblies: the same cutter, in the same
+    holder, with stickouts within `tolerance_mm` of each other.
 
-    Each row carries everything a cutter row does, plus the holder and the
-    range of stickouts it covers.
+    Returns, for each assembly, its tally row, the key of its holder, and
+    the observation rows that belong to it. The tally row carries everything
+    a cutter row does, plus the holder and the range of stickouts it covers.
     """
     holder_keys = _holder_keys(rows)
     groups: dict[tuple[str, str], list[dict]] = {}
@@ -137,18 +139,24 @@ def build_assembly_tally(rows: list[dict], tolerance_mm: float) -> list[dict]:
         holder_key = holder_keys[(row['holder_product_id'], row['holder_shape'])]
         groups.setdefault((row['cutter_key'], holder_key), []).append(row)
 
-    tally: list[dict] = []
+    assemblies: list[tuple[dict, str, list[dict]]] = []
     for (cutter_key, holder_key), group in groups.items():
         for band in _stickout_bands(group, tolerance_mm):
             stickouts = [r['stickout_mm'] for r in band
                          if r['stickout_mm'] is not None]
             start = f'{stickouts[0]:.3f}' if stickouts else 'none'
-            tally.append({
-                **_summarize(band),
+            assemblies.append(({
+                **summarize(band),
                 'assembly_key': f'{cutter_key}|{holder_key}|{start}',
                 'holder': _most_common([r['holder'] for r in band]),
                 'stickout_min_mm': min(stickouts) if stickouts else None,
                 'stickout_max_mm': max(stickouts) if stickouts else None,
-            })
+            }, holder_key, band))
+    return assemblies
+
+
+def build_assembly_tally(rows: list[dict], tolerance_mm: float) -> list[dict]:
+    """One dict per assembly (see split_assemblies). Most-used first."""
+    tally = [row for row, _, _ in split_assemblies(rows, tolerance_mm)]
     tally.sort(key=lambda t: (-t['operations'], t['assembly_key']))
     return tally

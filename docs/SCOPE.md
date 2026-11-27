@@ -56,13 +56,10 @@ No joints, BRep geometry, attributes, or custom features.
 
 ## Data & persistence
 
-SQLite files in the user's home directory, never the add-in folder and never
-the repo. Two separate datasets:
-
-- **Trial** — for small test folders; one button clears it completely,
-  including its holding library.
-- **Main** — the real sweep; reset makes a timestamped backup first and needs a
-  typed confirmation.
+One SQLite file in the user's home directory (`~/.toolguru/toolguru.sqlite`),
+never the add-in folder and never the repo. A reset empties it; it writes a
+timestamped backup copy first and needs a typed confirmation. The user's
+settings are a small JSON file beside it and are not touched by a reset.
 
 Records: *Document* (hub file id, version, dates, scan status), *Observation*
 (one per operation, with the tool's full raw JSON, holder, tool number,
@@ -85,7 +82,7 @@ assembly: a different holder or stickout is a different tool. Decisions
   holder's product ID, a fingerprint of the holder's shape, and the stickout
   (Fusion's "length below holder") in millimetres. A "Count by: Cutter /
   Assembly" switch on the tally chooses the view; nothing is rescanned. The
-  choice is remembered in `settings.json` beside the datasets.
+  choice is remembered in `settings.json` beside the data file.
 - **Same holder** means the same product ID, or the same shape. The owner
   chose "product ID, else shape"; shape also joins holders whose IDs differ,
   because one real program carried a single holder under three spellings of
@@ -117,10 +114,9 @@ embedded Python 3.14, `sqlite3` available). Registered for this folder through
 Three test layers:
 
 - **pytest** — unit conversion and rounding, fingerprint, similarity, tally and
-  first/last dates, rescan-replaces-not-doubles, store round trip, Trial clear
-  leaves Main untouched, Main reset backs up first.
-- **Vitest** — table sort/filter, time and unit formatting, cluster grouping,
-  dataset badge state.
+  first/last dates, rescan-replaces-not-doubles, store round trip, reset
+  backs up first.
+- **Vitest** — table sort/filter, time and unit formatting, cluster grouping.
 - **Fusion integration** — scratch document with a setup and operations using
   known tools; assert exact values from the extractor; write a library, read it
   back, clear it, assert it is gone.
@@ -184,15 +180,16 @@ Three test layers:
 
 ## First milestone
 
-Trial dataset, "Scan active document", Tally screen, and "Clear trial data".
-It is the thinnest path that touches the real pain (seeing what one program
-used, deduplicated) and it puts the reset in place before any folder scan
-exists.
+"Scan active document", the Tally screen, and a reset that backs the data
+up first. It is the thinnest path that touches the real pain (seeing what one
+program used, deduplicated) and it puts the reset in place before any folder
+scan exists.
 
-Then: folder scan with count-then-confirm, resume and skip → trial acceptance
-gate (scan, compare by eye, clear, rescan gives the identical tally, double
-scan does not double counts) → Main sweep → dedup, similarity, cutter detail,
-holding library → compare a program against the Hub standard.
+Then: folder scan with count-then-confirm, resume and skip → acceptance check
+on a small test folder (scan, compare by eye, reset, rescan gives the
+identical tally, double scan does not double counts) → the full sweep →
+dedup, similarity, cutter detail, holding library → compare a program against
+the Hub standard.
 
 ## Workflow
 

@@ -1,8 +1,8 @@
-"""What each palette action does to the state and the dataset files.
+"""What each palette action does to the state and the data file.
 
 No `adsk` imports: the event handler in entry.py reads Fusion and hands the
 result here, so every decision is testable under pytest. `base_dir` is the
-folder holding the dataset files; None means the user's home data folder.
+folder holding the data file; None means the user's home data folder.
 """
 
 from __future__ import annotations
@@ -15,9 +15,10 @@ from pathlib import Path
 
 from toolguru_lib import settings as user_settings
 from toolguru_lib import store as scan_store
+from toolguru_lib.detail import build_cutter_detail
 from toolguru_lib.records import (
     DocumentRecord, FileRef, ObservationRecord, ScanError)
-from toolguru_lib.store import Store, dataset_path
+from toolguru_lib.store import Store, data_path
 from toolguru_lib.tally import build_assembly_tally, build_tally
 
 from .state import AppState
@@ -29,26 +30,30 @@ NO_OPERATIONS = 'No operations with tools.'
 ScanOne = Callable[[str], tuple[DocumentRecord, list[ObservationRecord]]]
 
 
-def _store(dataset: str, base_dir: Path | None) -> Store:
-    return Store(dataset_path(dataset, base_dir))
+def _store(base_dir: Path | None) -> Store:
+    return Store(data_path(base_dir))
 
 
 def view(state: AppState, base_dir: Path | None = None) -> dict:
     """The full state sent to the palette after every action."""
-    store = _store(state.dataset, base_dir)
+    store = _store(base_dir)
     settings = user_settings.load(base_dir)
     rows = store.observation_rows()
     if settings.count_by == 'assembly':
         tally = build_assembly_tally(rows, settings.stickout_tolerance_mm)
     else:
         tally = build_tally(rows)
-    return state.serialize(store.counts(), tally, settings, store.job())
+    detail = None
+    if state.selected_cutter is not None:
+        detail = build_cutter_detail(
+            rows, state.selected_cutter, settings.stickout_tolerance_mm)
+    return state.serialize(store.counts(), tally, settings, store.job(), detail)
 
 
 def refuse_while_scanning(state: AppState) -> bool:
     """True, with a message, when a folder scan is running or still has a
-    program open. The scan opens and closes documents and writes to the active
-    dataset, so nothing else may change either underneath it."""
+    program open. The scan opens and closes documents and writes to the data
+    file, so nothing else may change either underneath it."""
     scanning = state.scan_running or state.scan_busy
     if scanning:
         state.begin_action()
@@ -68,6 +73,31 @@ def set_count_by(state: AppState, count_by: str,
         replace(user_settings.load(base_dir), count_by=count_by), base_dir)
 
 
+def set_display_unit(state: AppState, unit: str,
+                     base_dir: Path | None = None) -> None:
+    """Show lengths in inches or in millimetres. Only the display changes;
+    everything is stored in millimetres."""
+    state.begin_action()
+    if unit not in user_settings.DISPLAY_UNITS:
+        state.error = f'Unknown unit: {unit!r}'
+        return
+    user_settings.save(
+        replace(user_settings.load(base_dir), display_unit=unit), base_dir)
+
+
+def set_description_width(state: AppState, width_px: object,
+                          base_dir: Path | None = None) -> None:
+    """Remember how wide the user dragged the tally's description column."""
+    state.begin_action()
+    if (isinstance(width_px, bool) or not isinstance(width_px, (int, float))
+            or not math.isfinite(width_px) or width_px < 1):
+        state.error = 'The column width must be a number of pixels, one or more.'
+        return
+    user_settings.save(
+        replace(user_settings.load(base_dir),
+                description_width_px=round(width_px)), base_dir)
+
+
 def set_stickout_tolerance(state: AppState, tolerance_mm: object,
                            base_dir: Path | None = None) -> None:
     """How close two stickouts must be to count as the same assembly."""
@@ -83,23 +113,24 @@ def set_stickout_tolerance(state: AppState, tolerance_mm: object,
         base_dir)
 
 
-def set_dataset(state: AppState, dataset: str) -> None:
-    if refuse_while_scanning(state):
-        return
+def show_cutter(state: AppState, cutter_key: str) -> None:
+    """Open one cutter's detail. It stays open, and follows the data, until
+    it is closed or the data is reset."""
     state.begin_action()
-    state.proposed_scan = None
-    try:
-        state.set_dataset(dataset)
-    except ValueError as error:
-        state.error = str(error)
+    state.selected_cutter = cutter_key
+
+
+def close_cutter(state: AppState) -> None:
+    state.begin_action()
+    state.selected_cutter = None
 
 
 def store_scan(state: AppState, document: DocumentRecord,
                observations: list[ObservationRecord],
                base_dir: Path | None = None) -> None:
-    """Record one scanned document in the active dataset."""
+    """Record one scanned document."""
     state.begin_action()
-    _store(state.dataset, base_dir).replace_document(document, observations)
+    _store(base_dir).replace_document(document, observations)
     state.last_scan = {
         'name': document.name,
         'operations': len(observations),
@@ -114,30 +145,19 @@ def scan_failed(state: AppState, message: str) -> None:
     state.error = message
 
 
-def clear_trial(state: AppState, base_dir: Path | None = None) -> None:
-    """Empty the Trial dataset. Never touches Main, whichever is active."""
-    if refuse_while_scanning(state):
-        return
-    state.begin_action()
-    _store('trial', base_dir).clear()
-    if state.dataset == 'trial':
-        state.last_scan = None
-    state.notice = 'Trial data cleared.'
-
-
-def reset_main(state: AppState, confirm: str, stamp: str,
+def reset_data(state: AppState, confirm: str, stamp: str,
                base_dir: Path | None = None) -> None:
-    """Back up, then empty, the Main dataset. Needs the typed word."""
+    """Back up, then empty, the scan data. Needs the typed word."""
     if refuse_while_scanning(state):
         return
     state.begin_action()
     if confirm != RESET_WORD:
-        state.error = f'Type {RESET_WORD} to reset the main data.'
+        state.error = f'Type {RESET_WORD} to reset the data.'
         return
-    backup = _store('main', base_dir).backup_and_clear(stamp)
-    if state.dataset == 'main':
-        state.last_scan = None
-    state.notice = f'Main data reset. Backup saved as {backup.name}.'
+    backup = _store(base_dir).backup_and_clear(stamp)
+    state.last_scan = None
+    state.selected_cutter = None
+    state.notice = f'Data reset. Backup saved as {backup.name}.'
 
 
 # --- Folder scan --------------------------------------------------------------
@@ -170,7 +190,7 @@ def propose_scan(state: AppState, folder: str, files: list[FileRef]) -> None:
 
 
 def start_scan(state: AppState, base_dir: Path | None = None) -> bool:
-    """Queue the counted folder in the active dataset. True when the scan
+    """Queue the counted folder. True when the scan
     loop should start turning."""
     if refuse_while_scanning(state):
         return False
@@ -179,7 +199,7 @@ def start_scan(state: AppState, base_dir: Path | None = None) -> bool:
     if proposed is None:
         state.error = 'Count a folder before starting a scan.'
         return False
-    _store(state.dataset, base_dir).start_job(
+    _store(base_dir).start_job(
         proposed['folder'], proposed['files'])
     state.proposed_scan = None
     state.browser = None
@@ -202,7 +222,7 @@ def scan_step(state: AppState, scan_one: ScanOne,
         # Not running, or a step arrived while a program is still open: the
         # step that has it open carries on from there.
         return False
-    store = _store(state.dataset, base_dir)
+    store = _store(base_dir)
     waiting = store.next_pending()
     if waiting is not None:
         position, file = waiting
@@ -253,7 +273,7 @@ def resume_scan(state: AppState, base_dir: Path | None = None) -> bool:
     state.begin_action()
     if state.scan_running:
         return False
-    store = _store(state.dataset, base_dir)
+    store = _store(base_dir)
     if not state.scan_busy:   # a program open right now is not a lost one
         store.fail_interrupted()
     if store.next_pending() is None:
@@ -268,4 +288,4 @@ def dismiss_scan(state: AppState, base_dir: Path | None = None) -> None:
     if refuse_while_scanning(state):
         return
     state.begin_action()
-    _store(state.dataset, base_dir).end_job()
+    _store(base_dir).end_job()

@@ -1,12 +1,99 @@
+/* Every colour is a variable, set once per theme. Fusion's own setting picks
+   the theme (App.tsx puts it on <html data-theme>); until Fusion has
+   answered, the device's setting is used. `color-scheme` makes the browser's
+   own parts — inputs, drop-downs, scrollbars — follow the same theme. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --text: #222222;
+  --muted: #666666;
+  --border: #b5b5b5;
+  --line: #e3e3e3;
+  --surface: #fafafa;
+  --surface-border: #cfcfcf;
+  --control-bg: #f3f3f3;
+  --field-bg: #ffffff;
+  --header-bg: #f3f3f3;
+  --row-hover: #eef5fc;
+  --accent: #0a66c2;
+  --accent-text: #ffffff;
+  --link: #0a66c2;
+  --confirm-bg: #fff7e0;
+  --confirm-border: #d9a441;
+  --error-bg: #fde8e8;
+  --error-border: #e5a3a3;
+  --error-text: #aa1111;
+  --notice-bg: #eaf3fb;
+  --notice-border: #b5d2ec;
+  --track: #e3e3e3;
+  --picture-bg: #ffffff;
+  --mark-text: #7a4f00;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #2b303b;
+  --text: #e6e8ec;
+  --muted: #a3abb8;
+  --border: #596273;
+  --line: #414957;
+  --surface: #323846;
+  --surface-border: #4a5262;
+  --control-bg: #3b4352;
+  --field-bg: #222731;
+  --header-bg: #363d4b;
+  --row-hover: #3a4353;
+  --accent: #1a8ad6;
+  --accent-text: #ffffff;
+  --link: #6bbcff;
+  --confirm-bg: #453a1c;
+  --confirm-border: #9a7a2a;
+  --error-bg: #4a262b;
+  --error-border: #8f4a52;
+  --error-text: #ff9a9a;
+  --notice-bg: #243748;
+  --notice-border: #3d6a8f;
+  --track: #414957;
+  --picture-bg: #ffffff;
+  --mark-text: #f0c36a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #2b303b;
+    --text: #e6e8ec;
+    --muted: #a3abb8;
+    --border: #596273;
+    --line: #414957;
+    --surface: #323846;
+    --surface-border: #4a5262;
+    --control-bg: #3b4352;
+    --field-bg: #222731;
+    --header-bg: #363d4b;
+    --row-hover: #3a4353;
+    --accent: #1a8ad6;
+    --link: #6bbcff;
+    --confirm-bg: #453a1c;
+    --confirm-border: #9a7a2a;
+    --error-bg: #4a262b;
+    --error-border: #8f4a52;
+    --error-text: #ff9a9a;
+    --notice-bg: #243748;
+    --notice-border: #3d6a8f;
+    --track: #414957;
+    --mark-text: #f0c36a;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
 }
+html { background: var(--bg); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
-  color: #222;
-  background: #fff;
+  color: var(--text);
+  background: var(--bg);
 }
 .app {
   padding: 12px 14px;
@@ -22,33 +109,27 @@ h1 {
   font-size: 17px;
   margin: 0;
 }
-.badge {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 3px;
-  color: #fff;
-}
-.badge.trial { background: #b26a00; }
-.badge.main { background: #1f6f3f; }
-.muted { color: #666; }
+.muted { color: var(--muted); }
 button {
   font: inherit;
   padding: 5px 10px;
-  border: 1px solid #b5b5b5;
+  border: 1px solid var(--border);
   border-radius: 3px;
-  background: #f3f3f3;
+  background: var(--control-bg);
+  color: var(--text);
   cursor: pointer;
 }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: #0a66c2; border-color: #0a66c2; color: #fff; }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
 button.link {
   border: none;
   background: none;
-  color: #0a66c2;
+  color: var(--link);
   padding: 0;
-  margin-left: auto;
   text-decoration: underline;
 }
 .actions, .filters {
@@ -62,9 +143,9 @@ button.link {
 .segmented button:first-child { border-radius: 3px 0 0 3px; margin-left: 0; }
 .segmented button:last-child { border-radius: 0 3px 3px 0; }
 .segmented button.selected {
-  background: #0a66c2;
-  border-color: #0a66c2;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
   opacity: 1;
 }
 input.short { width: 110px; }
@@ -75,8 +156,8 @@ input.short { width: 110px; }
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 10px;
-  border: 1px solid #d9a441;
-  background: #fff7e0;
+  border: 1px solid var(--confirm-border);
+  background: var(--confirm-bg);
   border-radius: 3px;
 }
 .message {
@@ -84,14 +165,17 @@ input.short { width: 110px; }
   margin-bottom: 8px;
   border-radius: 3px;
 }
-.message.error { background: #fde8e8; border: 1px solid #e5a3a3; }
-.message.notice { background: #eaf3fb; border: 1px solid #b5d2ec; }
+.message.error { background: var(--error-bg); border: 1px solid var(--error-border); }
+.message.notice { background: var(--notice-bg); border: 1px solid var(--notice-border); }
 input, select {
   font: inherit;
   padding: 4px 6px;
-  border: 1px solid #b5b5b5;
+  border: 1px solid var(--border);
   border-radius: 3px;
+  background: var(--field-bg);
+  color: var(--text);
 }
+input::placeholder { color: var(--muted); }
 .filters input { flex: 1; min-width: 180px; }
 table {
   width: 100%;
@@ -100,27 +184,53 @@ table {
 th, td {
   text-align: left;
   padding: 4px 8px;
-  border-bottom: 1px solid #e3e3e3;
+  border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 th {
   position: sticky;
   top: 0;
-  background: #f3f3f3;
+  background: var(--header-bg);
   cursor: pointer;
   user-select: none;
 }
 th.num, td.num { text-align: right; }
-tbody tr:hover { background: #f7fafd; }
+/* A length's other unit, in its own column beside the shown one. */
+th.other, td.other {
+  text-align: right;
+  padding-left: 0;
+}
+/* Digits of one width, so numbers in a column line up. */
+td.num, td.other { font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: var(--row-hover); }
+/* The description column keeps a set width (TallyTable sets the variable),
+   so one long description cannot stretch the whole list. A cut-off
+   description ends in "…" and shows in full when the pointer rests on it. */
+td .clip {
+  width: var(--description-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The handle on that column's heading: drag it to change the width. */
+th .resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  border-right: 2px solid var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+th .resizer:hover, th .resizer:active { border-right-color: var(--accent); }
 .panel {
   padding: 8px 10px;
   margin-bottom: 10px;
-  border: 1px solid #cfcfcf;
+  border: 1px solid var(--surface-border);
   border-radius: 3px;
-  background: #fafafa;
+  background: var(--surface);
 }
 .panel .actions { margin-bottom: 6px; }
-.panel button.link { margin-left: 0; }
 .crumbs { margin-bottom: 6px; }
 ul.folders, ul.problems {
   list-style: none;
@@ -131,12 +241,112 @@ ul.folders, ul.problems {
 }
 ul.folders li { padding: 2px 0; }
 ul.problems li { padding: 2px 0; white-space: normal; }
-ul.problems li.failed strong { color: #a11; }
+ul.problems li.failed strong { color: var(--error-text); }
 .progress {
   height: 8px;
   margin-bottom: 6px;
-  background: #e3e3e3;
+  background: var(--track);
   border-radius: 4px;
   overflow: hidden;
 }
-.progress div { height: 100%; background: #0a66c2; }
+.progress div { height: 100%; background: var(--accent); }
+tbody tr.clickable { cursor: pointer; }
+h2 {
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+h3 {
+  font-size: 13px;
+  margin: 12px 0 4px;
+}
+.detail p { margin: 0; }
+/* The cutter's name and its four figures share one line. */
+.detail .summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.detail .title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Fusion's tool pictures are drawn on white, so they keep a white tile in
+   either theme. */
+.tool-picture {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: var(--picture-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+}
+.detail .tiles {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 380px;
+}
+.tile {
+  padding: 6px 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.tile span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tile b {
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tile small {
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Geometry on the left, the usual setup beside it. */
+.detail .columns {
+  display: grid;
+  /* The geometry column is as wide as its longest line, which is longer for
+     a tool shown in both units. */
+  grid-template-columns: minmax(200px, max-content) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.detail h3 { margin-top: 0; }
+.detail .columns + h3 { margin-top: 14px; }
+.detail .note {
+  font-weight: 400;
+  color: var(--muted);
+}
+.detail .three {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.detail td.wrap, .detail .three th { white-space: normal; }
+.detail .three th .note { display: block; }
+.detail tr.usual td { font-weight: 700; }
+/* A wide table scrolls on its own instead of widening the whole palette. */
+.detail .scroll { overflow-x: auto; }
+.detail .scroll th, .detail .scroll td { padding: 4px 6px; }
+/* A value that is not the cutter's usual one. */
+.differs {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--confirm-border);
+  border-radius: 3px;
+  background: var(--confirm-bg);
+  color: var(--mark-text);
+}
+table.plain th {
+  position: static;
+  cursor: default;
+}
+table.plain tbody tr:hover { background: none; }

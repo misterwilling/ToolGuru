@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AppState } from '../types'
-import { browserHere, datasetBadge, scanHeadline, scanOutcome, scanPercent } from '../utils'
+import { browserHere, scanHeadline, scanOutcome, scanPercent } from '../utils'
 
 interface Props {
   state: AppState
@@ -12,7 +12,6 @@ interface Props {
 export function ScanPanel({ state, busy, run }: Props) {
   const [includeSubfolders, setIncludeSubfolders] = useState(false)
   const { browser, confirmScan, scan } = state
-  const dataset = datasetBadge(state.dataset).label
 
   return (
     <>
@@ -68,8 +67,8 @@ export function ScanPanel({ state, busy, run }: Props) {
       {confirmScan && (
         <div className="confirm">
           “{confirmScan.folder}” contains {confirmScan.count} Fusion{' '}
-          {confirmScan.count === 1 ? 'design' : 'designs'}. Scan into the {dataset}? Each one is opened,
-          read and closed without saving.
+          {confirmScan.count === 1 ? 'design' : 'designs'}. Scan {confirmScan.count === 1 ? 'it' : 'them'}?
+          Each one is opened, read and closed without saving.
           <button className="primary" disabled={busy} onClick={() => run('start_folder_scan')}>
             Start scan
           </button>

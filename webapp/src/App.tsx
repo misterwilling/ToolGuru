@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { onFusionPush, sendToFusion } from './api/fusionBridge'
+import { CutterDetail } from './components/CutterDetail'
 import { ScanPanel } from './components/ScanPanel'
 import { TallyTable } from './components/TallyTable'
-import type { AppState, CountBy, Dataset, LengthUnit } from './types'
-import { countsSummary, datasetBadge, formatTolerance, isAppState, toleranceToMm } from './utils'
-
-type Confirm = 'none' | 'clear_trial' | 'reset_main' | 'switch_main'
+import type { AppState, CountBy, LengthUnit } from './types'
+import { countsSummary, formatTolerance, isAppState, toleranceToMm } from './utils'
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null)
   const [busy, setBusy] = useState(false)
-  const [confirm, setConfirm] = useState<Confirm>('none')
+  const [confirmReset, setConfirmReset] = useState(false)
   const [resetWord, setResetWord] = useState('')
   const [toleranceText, setToleranceText] = useState('')
   const [toleranceUnit, setToleranceUnit] = useState<LengthUnit>('in')
@@ -18,7 +17,7 @@ export function App() {
 
   async function run(action: string, data?: unknown): Promise<void> {
     setBusy(true)
-    setConfirm('none')
+    setConfirmReset(false)
     setResetWord('')
     const result = await sendToFusion(action, data)
     if (isAppState(result)) {
@@ -29,6 +28,13 @@ export function App() {
     }
     setBusy(false)
   }
+
+  // Follow Fusion's light or dark setting. Until Fusion has answered, the
+  // style sheet falls back to the device's own setting.
+  const theme = state?.theme
+  useEffect(() => {
+    if (theme) document.documentElement.dataset.theme = theme
+  }, [theme])
 
   useEffect(() => {
     // Python pushes the state after each program of a folder scan.
@@ -42,14 +48,21 @@ export function App() {
     return <div className="app">{bridgeError || 'Loading…'}</div>
   }
 
-  const badge = datasetBadge(state.dataset)
   const scanning = state.scan?.running === true
   // While a scan runs, only Stop works. A paused scan must be resumed or
   // dismissed before another folder is picked.
   const locked = busy || scanning
-  const other: Dataset = state.dataset === 'trial' ? 'main' : 'trial'
   const toleranceMm = toleranceToMm(toleranceText, toleranceUnit)
   const summary = countsSummary(state.counts, state.countBy === 'assembly' ? state.tally.length : undefined)
+  const unitButton = (value: LengthUnit) => (
+    <button
+      className={state.displayUnit === value ? 'selected' : undefined}
+      disabled={busy || state.displayUnit === value}
+      onClick={() => run('set_display_unit', { unit: value })}
+    >
+      {value}
+    </button>
+  )
   const countByButton = (value: CountBy, label: string) => (
     <button
       className={state.countBy === value ? 'selected' : undefined}
@@ -64,15 +77,7 @@ export function App() {
     <div className="app">
       <header>
         <h1>ToolGuru</h1>
-        <span className={`badge ${badge.tone}`}>{badge.label}</span>
         <span className="muted">{summary}</span>
-        <button
-          className="link"
-          disabled={locked}
-          onClick={() => (other === 'main' ? setConfirm('switch_main') : run('set_dataset', { dataset: 'trial' }))}
-        >
-          Switch to {other} data
-        </button>
       </header>
 
       <div className="actions">
@@ -85,14 +90,19 @@ export function App() {
         >
           Scan a folder…
         </button>
-        {state.dataset === 'trial' ? (
-          <button disabled={locked} onClick={() => setConfirm('clear_trial')}>Clear trial data</button>
-        ) : (
-          <button disabled={locked} onClick={() => setConfirm('reset_main')}>Reset main data</button>
-        )}
+        <button disabled={locked} onClick={() => setConfirmReset(true)}>Reset data</button>
       </div>
 
       <ScanPanel state={state} busy={busy} run={run} />
+
+      <div className="actions">
+        <span>Show lengths in:</span>
+        <span className="segmented">
+          {unitButton('in')}
+          {unitButton('mm')}
+        </span>
+        <span className="muted">A tool entered in the other unit shows that too, in brackets.</span>
+      </div>
 
       <div className="actions">
         <span>Count by:</span>
@@ -106,7 +116,7 @@ export function App() {
           <>
             <span className="muted">
               A different holder or stickout is a different tool. Stickouts within{' '}
-              {formatTolerance(state.stickoutToleranceMm)} match.
+              {formatTolerance(state.stickoutToleranceMm, state.displayUnit)} match.
             </span>
             <input
               className="short"
@@ -134,29 +144,14 @@ export function App() {
         )}
       </div>
 
-      {confirm === 'switch_main' && (
+      {confirmReset && (
         <div className="confirm">
-          Switch to the MAIN data? Scans will be added to your real tally.
-          <button onClick={() => run('set_dataset', { dataset: 'main' })}>Switch to main</button>
-          <button onClick={() => setConfirm('none')}>Cancel</button>
-        </div>
-      )}
-      {confirm === 'clear_trial' && (
-        <div className="confirm">
-          Remove {summary} from the trial data? Main data is not touched.
-          <button onClick={() => run('clear_trial')}>Clear trial data</button>
-          <button onClick={() => setConfirm('none')}>Cancel</button>
-        </div>
-      )}
-      {confirm === 'reset_main' && (
-        <div className="confirm">
-          Remove {summary} from the MAIN data? A backup copy is saved first.
-          Type RESET to continue:
+          Remove {summary}? A backup copy is saved first. Type RESET to continue:
           <input value={resetWord} onChange={(event) => setResetWord(event.target.value)} />
-          <button disabled={resetWord !== 'RESET'} onClick={() => run('reset_main', { confirm: resetWord })}>
-            Reset main data
+          <button disabled={resetWord !== 'RESET'} onClick={() => run('reset_data', { confirm: resetWord })}>
+            Reset data
           </button>
-          <button onClick={() => setConfirm('none')}>Cancel</button>
+          <button onClick={() => setConfirmReset(false)}>Cancel</button>
         </div>
       )}
 
@@ -173,12 +168,31 @@ export function App() {
         </div>
       )}
 
+      {state.detail && (
+        <CutterDetail
+          detail={state.detail}
+          display={state.displayUnit}
+          picture={state.toolPictures?.[state.detail.tool_type]}
+          busy={busy}
+          onClose={() => run('close_cutter')}
+        />
+      )}
       {state.tally.length === 0 ? (
         <p className="muted">
           No tools yet. Open a program and click “Scan active document”, or scan a folder.
         </p>
       ) : (
-        <TallyTable rows={state.tally} countBy={state.countBy} />
+        // Hidden, not removed, while a detail is open: the sort and filter are kept.
+        <div hidden={state.detail !== null}>
+          <TallyTable
+            rows={state.tally}
+            countBy={state.countBy}
+            display={state.displayUnit}
+            descriptionWidth={state.descriptionWidthPx}
+            onResized={(widthPx) => run('set_description_width', { widthPx })}
+            onOpen={(cutterKey) => run('show_cutter', { cutterKey })}
+          />
+        </div>
       )}
     </div>
   )

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from toolguru_lib import extract
 from toolguru_lib.records import DocumentRecord
-from toolguru_lib.store import Store, dataset_path
+from toolguru_lib.store import Store, data_path
 from toolguru_lib.tally import build_assembly_tally, build_tally
 
 from toolguru_fusion_tests import helpers
@@ -114,7 +114,7 @@ class TestReadObservations(unittest.TestCase):
 
     def test_scan_is_stored_and_tallied_inside_fusion(self):
         with tempfile.TemporaryDirectory() as folder:
-            store = Store(dataset_path('trial', Path(folder)))
+            store = Store(data_path(Path(folder)))
             document = DocumentRecord(
                 file_id='test-file', version=1, name='scratch', project='none',
                 date_created=100, date_modified=200)

@@ -1,8 +1,7 @@
 """SQLite storage for scan results.
 
-Two datasets, each its own file in the user's home directory and never in
-the add-in folder: 'trial' for small test scans (cleared with one call) and
-'main' for the real sweep (reset only after a backup copy is written).
+One file in the user's home directory, never in the add-in folder. It is
+emptied only by a reset, which writes a backup copy first.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from pathlib import Path
 from toolguru_lib import assembly
 from toolguru_lib.records import DocumentRecord, FileRef, ObservationRecord
 
-DATASETS = ('trial', 'main')
+DATA_FILE = 'toolguru.sqlite'
 
 _DOCUMENT_COLUMNS = [f.name for f in fields(DocumentRecord)]
 _OBSERVATION_COLUMNS = [f.name for f in fields(ObservationRecord)]
@@ -76,7 +75,7 @@ PENDING, OPENING, SCANNED, SKIPPED, FAILED = (
 INTERRUPTED = ('The scan stopped while this program was open. '
                'Scan it on its own to check it.')
 
-# Columns added after datasets already existed. An older file gains them on
+# Columns added after data files already existed. An older file gains them on
 # open and they are filled from each row's stored tool JSON.
 _ADDED_COLUMNS = {
     'holder_product_id': "TEXT NOT NULL DEFAULT ''",
@@ -107,14 +106,12 @@ def data_dir() -> Path:
     return Path.home() / '.toolguru'
 
 
-def dataset_path(dataset: str, base_dir: Path | None = None) -> Path:
-    if dataset not in DATASETS:
-        raise ValueError(f'Unknown dataset: {dataset!r}')
-    return (base_dir or data_dir()) / f'{dataset}.sqlite'
+def data_path(base_dir: Path | None = None) -> Path:
+    return (base_dir or data_dir()) / DATA_FILE
 
 
 class Store:
-    """One dataset file. Opens a connection per call so no file handle is held
+    """The data file. Opens a connection per call so no file handle is held
     between palette events."""
 
     def __init__(self, path: Path) -> None:
@@ -160,16 +157,17 @@ class Store:
                 'cutters': cutters}
 
     def observation_rows(self) -> list[dict]:
-        """Every observation joined with its document's dates."""
+        """Every observation joined with its document's name and dates."""
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                'SELECT o.*, d.date_created, d.date_modified '
+                'SELECT o.*, d.name AS document_name, d.date_created, '
+                'd.date_modified '
                 'FROM observations o JOIN documents d USING (file_id) '
                 'ORDER BY o.id').fetchall()
         return [dict(row) for row in rows]
 
     def clear(self) -> None:
-        """Remove everything; the dataset is as it was on first run."""
+        """Remove everything; the file is as it was on first run."""
         with closing(self._connect()) as conn, conn:
             conn.execute('DELETE FROM observations')
             conn.execute('DELETE FROM documents')
@@ -189,7 +187,7 @@ class Store:
         return backup
 
     # --- Folder scan queue --------------------------------------------------
-    # One folder scan at a time per dataset. It is kept in the file so a scan
+    # One folder scan at a time. It is kept in the file so a scan
     # can carry on after the palette, the add-in or Fusion was closed.
 
     def start_job(self, folder: str, files: list[FileRef]) -> None:
