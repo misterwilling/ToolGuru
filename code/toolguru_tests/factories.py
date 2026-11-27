@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from toolguru_lib.records import (
     DocumentRecord, ObservationRecord, build_observation)
@@ -50,10 +51,14 @@ def make_tool(**overrides) -> dict:
 
 
 def make_document(file_id: str = 'file-1', *, date_created: int = 1_700_000_000,
-                  date_modified: int = 1_700_086_400) -> DocumentRecord:
-    return DocumentRecord(
-        file_id=file_id, version=3, name=f'Program {file_id}', project='Project',
-        date_created=date_created, date_modified=date_modified)
+                  date_modified: int = 1_700_086_400, version: int = 3,
+                  scanned_at: int | None = None,
+                  scan_level: int | None = None) -> DocumentRecord:
+    document = DocumentRecord(
+        file_id=file_id, version=version, name=f'Program {file_id}',
+        project='Project', date_created=date_created,
+        date_modified=date_modified, scanned_at=scanned_at)
+    return document if scan_level is None else replace(document, scan_level=scan_level)
 
 
 def make_observation(file_id: str = 'file-1', *, tool: dict | None = None,

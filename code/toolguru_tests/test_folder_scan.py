@@ -53,7 +53,8 @@ class TestCountThenConfirm:
         state = AppState()
         actions.propose_scan(state, 'Project / Folder', FILES)
         view = actions.view(state, tmp_path)
-        assert view['confirmScan'] == {'folder': 'Project / Folder', 'count': 3}
+        assert view['confirmScan'] == {
+            'folder': 'Project / Folder', 'count': 3, 'unchanged': 0}
         assert view['scan'] is None
         assert state.scan_running is False
 
@@ -78,7 +79,7 @@ class TestCountThenConfirm:
         assert view['confirmScan'] is None
         assert view['scan'] == {
             'folder': 'Project / Folder', 'total': 3, 'pending': 3,
-            'scanned': 0, 'skipped': 0, 'failed': 0, 'problems': [],
+            'scanned': 0, 'unchanged': 0, 'skipped': 0, 'failed': 0, 'problems': [],
             'running': True}
 
     def test_browsing_elsewhere_drops_the_counted_folder(self, tmp_path):
@@ -126,7 +127,7 @@ class TestScanSteps:
             'Folder scan finished: 3 scanned, 0 skipped, 0 failed.')
         assert view['scan'] == {
             'folder': 'Project / Folder', 'total': 3, 'pending': 0,
-            'scanned': 3, 'skipped': 0, 'failed': 0, 'problems': [],
+            'scanned': 3, 'unchanged': 0, 'skipped': 0, 'failed': 0, 'problems': [],
             'running': False}
         assert view['counts'] == {'documents': 3, 'observations': 3, 'cutters': 2}
 

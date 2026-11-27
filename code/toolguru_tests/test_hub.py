@@ -18,9 +18,10 @@ from toolguru_lib.records import FileRef, ScanError
 from toolguru_tests.mock_adsk import MockCollection
 
 
-def make_file(file_id: str, extension: str = 'f3d') -> SimpleNamespace:
+def make_file(file_id: str, extension: str = 'f3d',
+              version: int = 4) -> SimpleNamespace:
     return SimpleNamespace(id=file_id, name=f'Program {file_id}',
-                           fileExtension=extension)
+                           fileExtension=extension, versionNumber=version)
 
 
 def make_folder(folder_id: str, files=(), folders=(), *, project: str = '',
@@ -101,7 +102,7 @@ class TestBrowse:
 class TestCollectPrograms:
     def test_without_subfolders_only_the_folder_itself_is_read(self, data):
         assert hub.collect_programs(hub.find_folder(data, 'jobs'), False) == [
-            FileRef('j1', 'Program j1'), FileRef('j2', 'Program j2')]
+            FileRef('j1', 'Program j1', 4), FileRef('j2', 'Program j2', 4)]
 
     def test_with_subfolders_everything_below_is_included(self, data):
         found = hub.collect_programs(hub.find_folder(data, 'root-1'), True)

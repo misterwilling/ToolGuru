@@ -96,7 +96,8 @@ def _programs_in(folder: adsk.core.DataFolder) -> list[FileRef]:
     for i in range(files.count):
         data_file = files.item(i)
         if data_file.fileExtension == PROGRAM_EXTENSION:
-            found.append(FileRef(data_file.id, data_file.name))
+            found.append(FileRef(data_file.id, data_file.name,
+                                 data_file.versionNumber))
     return found
 
 

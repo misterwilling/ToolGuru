@@ -10,7 +10,10 @@ import {
   draggedWidth,
   familiesIn,
   groupSummary,
+  libraryLine,
   libraryOptions,
+  rowsBetween,
+  tickedState,
   writeLibraryLabel,
   mergedCount,
   variantCells,
@@ -817,5 +820,59 @@ describe('the holding library', () => {
   it('counts the ticked cutters on the write button', () => {
     expect(writeLibraryLabel(0)).toBe('Write holding library')
     expect(writeLibraryLabel(12)).toBe('Write holding library (12)')
+  })
+})
+
+describe('ticking many lines', () => {
+  const row = (key: string, ticked = false, assembly?: string) =>
+    makeRow({ cutter_key: key, in_library: ticked, ...(assembly ? { assembly_key: assembly } : {}) })
+  const rows = [row('a'), row('b'), row('c'), row('d')]
+
+  it('names a line by its cutter, and its assembly when counting by assembly', () => {
+    expect(libraryLine(row('a'))).toEqual({ cutterKey: 'a', assemblyKey: null })
+    expect(libraryLine(row('a', false, 'a|h|1'))).toEqual({ cutterKey: 'a', assemblyKey: 'a|h|1' })
+  })
+
+  it('takes the run between two clicks, whichever was first', () => {
+    expect(rowsBetween(rows, 'b', 'd').map((r) => r.cutter_key)).toEqual(['b', 'c', 'd'])
+    expect(rowsBetween(rows, 'd', 'b').map((r) => r.cutter_key)).toEqual(['b', 'c', 'd'])
+  })
+
+  it('takes one line when the same line is clicked twice', () => {
+    expect(rowsBetween(rows, 'c', 'c').map((r) => r.cutter_key)).toEqual(['c'])
+  })
+
+  it('takes only the clicked line when nothing was clicked before or it has been filtered out', () => {
+    expect(rowsBetween(rows, null, 'c').map((r) => r.cutter_key)).toEqual(['c'])
+    expect(rowsBetween(rows, 'gone', 'c').map((r) => r.cutter_key)).toEqual(['c'])
+  })
+
+  it('follows the order shown, not the order of the data', () => {
+    const sorted = [rows[3], rows[0], rows[2], rows[1]]
+    expect(rowsBetween(sorted, 'd', 'c').map((r) => r.cutter_key)).toEqual(['d', 'a', 'c'])
+  })
+
+  it('says none, some or all of the shown cutters are ticked', () => {
+    expect(tickedState(rows, rows)).toBe('none')
+    const some = [row('a', true), row('b')]
+    expect(tickedState(some, some)).toBe('some')
+    const all = [row('a', true), row('b', true)]
+    expect(tickedState(all, all)).toBe('all')
+  })
+
+  it('judges only the lines shown', () => {
+    const all = [row('a', true), row('b')]
+    expect(tickedState([all[0]], all)).toBe('all')
+    expect(tickedState([all[1]], all)).toBe('none')
+  })
+
+  it('counts a cutter as ticked when any of its assembly lines is', () => {
+    const all = [row('a', true, 'a|h|1'), row('a', false, 'a|h|2'), row('b', true, 'b|h|1')]
+    expect(tickedState(all, all)).toBe('all')
+    expect(tickedState([all[1]], all)).toBe('all')
+  })
+
+  it('has nothing ticked in an empty list', () => {
+    expect(tickedState([], rows)).toBe('none')
   })
 })

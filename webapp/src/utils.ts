@@ -4,6 +4,7 @@
 import type {
   AppState,
   Browser,
+  ConfirmScan,
   Counts,
   CutterDetail,
   CutterFields,
@@ -298,6 +299,46 @@ export function speedsNote(speeds: Speeds): string {
   return `${plural(without, 'operation')} ${without === 1 ? 'has' : 'have'} none recorded.`
 }
 
+/** One tally line as the holding library is told about it. */
+export interface LibraryLine {
+  cutterKey: string
+  assemblyKey: string | null // set when counting by assembly
+}
+
+export function libraryLine(row: TallyRow): LibraryLine {
+  return { cutterKey: row.cutter_key, assemblyKey: row.assembly_key ?? null }
+}
+
+/**
+ * How many of the cutters in the list as shown are ticked: what the box in
+ * the heading shows. It counts cutters, not lines: counting by assembly, a
+ * cutter has several lines and only one of them carries its tick. `rows` is
+ * the whole tally, since that line may be filtered out of `shown`.
+ */
+export function tickedState(shown: TallyRow[], rows: TallyRow[]): 'all' | 'some' | 'none' {
+  const ticked = new Set(rows.filter((row) => row.in_library).map((row) => row.cutter_key))
+  const cutters = new Set(shown.map((row) => row.cutter_key))
+  let count = 0
+  cutters.forEach((key) => {
+    if (ticked.has(key)) count += 1
+  })
+  if (count === 0) return 'none'
+  return count === cutters.size ? 'all' : 'some'
+}
+
+/**
+ * The lines from the one clicked before (`fromKey`, a rowKey) to the one
+ * clicked now, in the order shown, both included: a shift-click's run. Just
+ * the clicked line when the earlier one is no longer in the list.
+ */
+export function rowsBetween(shown: TallyRow[], fromKey: string | null, toKey: string): TallyRow[] {
+  const to = shown.findIndex((row) => rowKey(row) === toKey)
+  if (to < 0) return []
+  const from = fromKey === null ? -1 : shown.findIndex((row) => rowKey(row) === fromKey)
+  if (from < 0) return [shown[to]]
+  return shown.slice(Math.min(from, to), Math.max(from, to) + 1)
+}
+
 export interface LibraryOption {
   value: string // an assembly's key; '' for "whichever is usual"
   label: string
@@ -557,8 +598,30 @@ export function scanHeadline(scan: ScanJob): string {
   return `Scan of “${scan.folder}” finished: ${progress}`
 }
 
+/** "10 scanned, 1 skipped, 1 failed", naming unchanged programs only when there are some. */
 export function scanOutcome(scan: ScanJob): string {
-  return `${scan.scanned} scanned, ${scan.skipped} skipped, ${scan.failed} failed`
+  const unchanged = scan.unchanged > 0 ? `${scan.unchanged} unchanged, ` : ''
+  return `${scan.scanned} scanned, ${unchanged}${scan.skipped} skipped, ${scan.failed} failed`
+}
+
+/**
+ * What a counted folder holds and what a scan of it would do. Programs that
+ * have not been saved since they were scanned are not opened again.
+ */
+export function confirmScanText(confirm: ConfirmScan): string {
+  const holds = `“${confirm.folder}” contains ${plural(confirm.count, 'Fusion design')}.`
+  const opened = confirm.count - confirm.unchanged
+  if (opened === 0) {
+    return `${holds} None has changed since it was scanned, so a scan would open nothing.`
+  }
+  if (confirm.unchanged === 0) {
+    return `${holds} Scan ${confirm.count === 1 ? 'it' : 'them'}? Each one is opened, read and closed without saving.`
+  }
+  return (
+    `${holds} ${confirm.unchanged} ${confirm.unchanged === 1 ? 'has' : 'have'} not changed since ` +
+    `${confirm.unchanged === 1 ? 'it was' : 'they were'} scanned and will be skipped. Scan the other ${opened}? ` +
+    'Each one is opened, read and closed without saving.'
+  )
 }
 
 /** What the folder picker says about the level it is showing. */

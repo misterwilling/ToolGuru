@@ -109,7 +109,7 @@ export function DatabasesPanel({ databases, counts, disabled, run }: Props) {
                 </button>
                 <span>
                   Combine “{loading}” with what is showing now. Nothing is removed, and a program that is in both is
-                  counted once.
+                  counted once, from whichever was scanned more recently.
                 </span>
               </div>
               <div className="choice">

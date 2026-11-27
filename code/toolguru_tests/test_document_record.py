@@ -33,13 +33,14 @@ def make_file(version_dates: dict[int, int], listed: list[int]) -> SimpleNamespa
             [make_version(n, version_dates[n]) for n in listed]))
 
 
-def test_first_used_is_the_first_version_and_last_used_the_latest():
+def test_first_used_is_the_first_version_and_last_used_the_latest(monkeypatch):
+    monkeypatch.setattr(extract.time, 'time', lambda: 5000.9)
     data_file = make_file({1: 1000, 2: 2000, 3: 3000}, listed=[3, 1, 2])
 
     assert extract.document_record(SimpleNamespace(dataFile=data_file)) == (
         DocumentRecord(file_id='file-1', version=3, name='Program',
                        project='Project', date_created=1000,
-                       date_modified=3000))
+                       date_modified=3000, scanned_at=5000, scan_level=2))
 
 
 def test_the_oldest_version_is_found_wherever_fusion_lists_it():

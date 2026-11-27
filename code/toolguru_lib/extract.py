@@ -6,6 +6,8 @@ never writes: nothing here modifies or saves a document.
 
 from __future__ import annotations
 
+import time
+
 import adsk.cam
 import adsk.core
 
@@ -45,6 +47,7 @@ def document_record(doc: adsk.core.Document) -> DocumentRecord:
         project=data_file.parentProject.name,
         date_created=first_saved(data_file),
         date_modified=data_file.dateModified,
+        scanned_at=int(time.time()),
     )
 
 

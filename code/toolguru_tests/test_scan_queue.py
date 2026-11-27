@@ -25,7 +25,7 @@ def test_a_new_job_has_every_file_pending_in_folder_order(store):
     store.start_job('Project / Folder', FILES)
     assert store.job() == {
         'folder': 'Project / Folder', 'total': 3, 'pending': 3,
-        'scanned': 0, 'skipped': 0, 'failed': 0, 'problems': []}
+        'scanned': 0, 'unchanged': 0, 'skipped': 0, 'failed': 0, 'problems': []}
     assert store.next_pending() == (0, FileRef('a', 'Program a'))
 
 
@@ -86,7 +86,7 @@ def test_starting_a_job_replaces_the_previous_one(store):
     store.start_job('New', FILES[:1])
     assert store.job() == {
         'folder': 'New', 'total': 1, 'pending': 1,
-        'scanned': 0, 'skipped': 0, 'failed': 0, 'problems': []}
+        'scanned': 0, 'unchanged': 0, 'skipped': 0, 'failed': 0, 'problems': []}
 
 
 def test_ending_a_job_keeps_the_scanned_data(store):

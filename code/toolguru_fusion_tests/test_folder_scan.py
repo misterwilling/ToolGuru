@@ -75,6 +75,20 @@ class TestHubBrowse(unittest.TestCase):
         self.assertEqual(data_file.dateCreated, dates[max(dates)])
         self.assertLess(extract.first_saved(data_file), data_file.dateCreated)
 
+    def test_a_listed_design_carries_its_latest_version(self):
+        """A folder scan skips a program by comparing this number with the
+        version it scanned, so it must be the latest one."""
+        data_file = self._a_design_saved_more_than_once()
+        if data_file is None:
+            self.skipTest('No design with several versions at the top of a project.')
+        versions = data_file.versions
+        latest = max(versions.item(i).versionNumber for i in range(versions.count))
+        listed = {ref.file_id: ref for ref in
+                  hub.collect_programs(data_file.parentFolder, False)}
+
+        self.assertEqual(listed[data_file.id].version, latest)
+        self.assertGreater(latest, 1)
+
     def _a_design_saved_more_than_once(self):
         projects = self.data.dataProjects
         for p in range(projects.count):
@@ -132,7 +146,8 @@ class TestScanSteps(unittest.TestCase):
             ['drill', 'flat end mill'])
         self.assertEqual(view['scan'], {
             'folder': 'Project / Folder', 'total': 2, 'pending': 0,
-            'scanned': 1, 'skipped': 1, 'failed': 0, 'running': False,
+            'scanned': 1, 'unchanged': 0, 'skipped': 1, 'failed': 0,
+            'running': False,
             'problems': [{
                 'name': 'Plain design', 'status': 'skipped',
                 'message': 'This document has no Manufacturing data to scan.'}]})

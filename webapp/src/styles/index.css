@@ -423,7 +423,13 @@ h3 {
 }
 .tag.count { margin: 0; }
 /* The tick that puts a cutter in the holding library. */
-th.pick, td.pick { text-align: center; padding-left: 6px; padding-right: 2px; cursor: default; }
+th.pick, td.pick {
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 2px;
+  cursor: default;
+  user-select: none; /* a shift-click must not select the text between */
+}
 input[type='checkbox'] { accent-color: var(--accent); margin: 0; padding: 0; vertical-align: middle; }
 .detail .actions.library { margin-bottom: 12px; }
 /* A narrow column's heading, set smaller so the column stays narrow. */

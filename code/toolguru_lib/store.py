@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS documents (
     name TEXT NOT NULL,
     project TEXT NOT NULL,
     date_created INTEGER NOT NULL,
-    date_modified INTEGER NOT NULL
+    date_modified INTEGER NOT NULL,
+    scanned_at INTEGER,
+    scan_level INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS observations (
     id INTEGER PRIMARY KEY,
@@ -85,6 +87,8 @@ CREATE TABLE IF NOT EXISTS scan_items (
 # a file that takes Fusion down is still marked when the add-in comes back.
 PENDING, OPENING, SCANNED, SKIPPED, FAILED = (
     'pending', 'opening', 'scanned', 'skipped', 'failed')
+# Not opened at all: the data already holds this version of the program.
+UNCHANGED = 'unchanged'
 INTERRUPTED = ('The scan stopped while this program was open. '
                'Scan it on its own to check it.')
 
@@ -104,7 +108,20 @@ _ADDED_COLUMNS = {
 }
 
 
+# Added to the documents table later. A program scanned before then has no
+# scan time, and counts as scanned at the first level.
+_ADDED_DOCUMENT_COLUMNS = {
+    'scanned_at': 'INTEGER',
+    'scan_level': 'INTEGER NOT NULL DEFAULT 1',
+}
+
+
 def _upgrade(conn: sqlite3.Connection) -> None:
+    documented = {row['name'] for row in
+                  conn.execute('PRAGMA table_info(documents)')}
+    for name, kind in _ADDED_DOCUMENT_COLUMNS.items():
+        if name not in documented:
+            conn.execute(f'ALTER TABLE documents ADD COLUMN {name} {kind}')
     present = {row['name'] for row in
                conn.execute('PRAGMA table_info(observations)')}
     missing = [name for name in _ADDED_COLUMNS if name not in present]
@@ -287,9 +304,11 @@ class Store:
         """Add another data file's programs to this one.
 
         A program that is in both keeps this file's scan, unless the other
-        file holds a later version of the program: then the other's scan
-        takes its place. Returns how many programs were added, how many were
-        updated, and how many were kept as they were.
+        file scanned it more recently: then the other's scan takes its
+        place. Scans from before the time was recorded count as the oldest,
+        and between two of those the later version of the program wins.
+        Returns how many programs were added, how many were updated, and how
+        many were kept as they were.
         """
         documents = ', '.join(_DOCUMENT_COLUMNS)
         observations = ', '.join(_OBSERVATION_COLUMNS)
@@ -302,7 +321,10 @@ class Store:
                 conn.execute(
                     'CREATE TEMP TABLE incoming AS SELECT o.file_id FROM other.documents o '
                     'LEFT JOIN documents d ON d.file_id = o.file_id '
-                    'WHERE d.file_id IS NULL OR o.version > d.version')
+                    'WHERE d.file_id IS NULL '
+                    'OR COALESCE(o.scanned_at, 0) > COALESCE(d.scanned_at, 0) '
+                    'OR (COALESCE(o.scanned_at, 0) = COALESCE(d.scanned_at, 0) '
+                    'AND o.version > d.version)')
                 incoming = conn.execute('SELECT COUNT(*) FROM incoming').fetchone()[0]
                 updated = conn.execute(
                     'DELETE FROM documents WHERE file_id IN '
@@ -322,16 +344,29 @@ class Store:
     # One folder scan at a time. It is kept in the file so a scan
     # can carry on after the palette, the add-in or Fusion was closed.
 
-    def start_job(self, folder: str, files: list[FileRef]) -> None:
-        """Queue a folder's files, replacing any earlier queue."""
+    def scan_marks(self) -> dict[str, tuple[int, int]]:
+        """For each scanned program, the version that was read and what that
+        scan recorded (see records.SCAN_LEVEL)."""
+        with closing(self._connect()) as conn:
+            return {row['file_id']: (row['version'], row['scan_level'])
+                    for row in conn.execute(
+                        'SELECT file_id, version, scan_level FROM documents')}
+
+    def start_job(self, folder: str, files: list[FileRef],
+                  unchanged: frozenset[str] | set[str] = frozenset()) -> None:
+        """Queue a folder's files, replacing any earlier queue. Files named
+        in `unchanged` are listed as such and never opened."""
         with closing(self._connect()) as conn, conn:
             conn.execute('DELETE FROM scan_items')
             conn.execute('DELETE FROM scan_job')
             conn.execute('INSERT INTO scan_job (id, folder) VALUES (1, ?)',
                          (folder,))
             conn.executemany(
-                'INSERT INTO scan_items (position, file_id, name) VALUES (?, ?, ?)',
-                [(i, f.file_id, f.name) for i, f in enumerate(files)])
+                'INSERT INTO scan_items (position, file_id, name, status) '
+                'VALUES (?, ?, ?, ?)',
+                [(i, f.file_id, f.name,
+                  UNCHANGED if f.file_id in unchanged else PENDING)
+                 for i, f in enumerate(files)])
 
     def job(self) -> dict | None:
         """Progress of the folder scan, or None when there is none. A file left
@@ -351,6 +386,7 @@ class Store:
             'total': sum(by_status.values()),
             'pending': by_status.get(PENDING, 0) + by_status.get(OPENING, 0),
             'scanned': by_status.get(SCANNED, 0),
+            'unchanged': by_status.get(UNCHANGED, 0),
             'skipped': by_status.get(SKIPPED, 0),
             'failed': by_status.get(FAILED, 0),
             'problems': [dict(row) for row in problems],
