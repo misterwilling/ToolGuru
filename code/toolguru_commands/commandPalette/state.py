@@ -36,13 +36,15 @@ class AppState:
                   job: dict | None = None, detail: dict | None = None,
                   databases: list[dict] | None = None,
                   similar: dict | None = None,
-                  library_count: int = 0, unchanged: int = 0) -> dict:
+                  library_count: int = 0, unchanged: int = 0,
+                  uncredited_time_s: float = 0.0) -> dict:
         """`job` is the folder scan under way (see Store.job), if any.
         `detail` is the open cutter's detail (see detail.build_cutter_detail).
         `databases` is the list of saved databases while its panel is open.
         `similar` is the similar-cutters screen's content while it is open.
         `library_count` is how many cutters are picked for the holding library.
-        `unchanged` is how many of the counted folder's programs a scan would skip."""
+        `unchanged` is how many of the counted folder's programs a scan would skip.
+        `uncredited_time_s` is cutting time that could not be given to any tool."""
         proposed = self.proposed_scan
         return {
             'counts': dict(counts),
@@ -55,6 +57,7 @@ class AppState:
             'databases': databases,
             'similar': similar,
             'libraryCount': library_count,
+            'uncreditedTimeS': uncredited_time_s,
             'lastScan': dict(self.last_scan) if self.last_scan else None,
             'browser': self.browser,
             'confirmScan': ({'folder': proposed['folder'],

@@ -19,15 +19,26 @@ import {
   otherUnit,
   rowKey,
   sortTally,
+  sourceLabel,
+  sourcesIn,
   stickoutParts,
   toggleSort,
   typeChoice,
   unitHeading,
   typesByFamily,
   validChoice,
+  validSource,
 } from '../utils'
 
 const BEFORE_DIAMETER: Column[] = [{ key: 'tool_type', label: 'Type', numeric: false }]
+const SOURCE: Column = {
+  key: 'source',
+  label: 'From',
+  numeric: false,
+  small: true,
+  hint: 'The CAM system the cutter was read from',
+}
+const NOT_WRITABLE = 'Read from Mastercam only: it cannot be written to a Fusion tool library yet.'
 const AFTER_DIAMETER: Column[] = [
   { key: 'flutes', label: 'Flutes', numeric: true },
   { key: 'description', label: 'Description', numeric: false },
@@ -81,6 +92,7 @@ export function TallyTable({
   const [sort, setSort] = useState<SortState>({ key: 'operations', direction: 'desc' })
   const [text, setText] = useState('')
   const [picked, setPicked] = useState('all')
+  const [pickedSource, setPickedSource] = useState('all')
   // The description column keeps a set width, so one long description cannot
   // stretch the whole list. Dragging the handle on its heading changes it;
   // the width follows the pointer here and is saved when the drag ends.
@@ -103,7 +115,11 @@ export function TallyTable({
   // The drop-down lists only what is in the data, so a choice can vanish
   // when the data changes: after a rescan or a reset.
   const choice = validChoice(rows, picked)
-  const shown = sortTally(filterTally(rows, text, choice), sort).map((row) => ({
+  // Where the cutters were read from is only shown once there is more than one place.
+  const sources = sourcesIn(rows)
+  const mixed = sources.length > 1 || sources.some((source) => source !== 'fusion')
+  const source = validSource(rows, pickedSource)
+  const shown = sortTally(filterTally(rows, text, choice, source), sort).map((row) => ({
     row,
     diameter: diameterParts(row.diameter_mm, row.units, display),
     stickout: stickoutParts(row.stickout_min_mm, row.stickout_max_mm, row.units, display),
@@ -187,6 +203,14 @@ export function TallyTable({
             </optgroup>
           ))}
         </select>
+        {sources.length > 1 && (
+          <select value={source} onChange={(event) => setPickedSource(event.target.value)}>
+            <option value="all">Fusion and Mastercam</option>
+            {sources.map((name) => (
+              <option key={name} value={name}>{sourceLabel(name)} only</option>
+            ))}
+          </select>
+        )}
         <span className="muted">
           {shown.length} of {rows.length} {byAssembly ? 'assemblies' : 'cutters'}. Click a row for the
           cutter's detail. Shift-click a tick to tick a run of lines.
@@ -204,10 +228,13 @@ export function TallyTable({
                 type="checkbox"
                 aria-label="Tick or untick every cutter shown"
                 checked={ticked === 'all'}
-                disabled={locked || shown.length === 0}
-                onChange={() => onPickMany(shown.map((line) => libraryLine(line.row)), ticked !== 'all')}
+                disabled={locked || !shownRows.some((row) => row.writable)}
+                onChange={() =>
+                  onPickMany(shownRows.filter((row) => row.writable).map(libraryLine), ticked !== 'all')
+                }
               />
             </th>
+            {mixed && heading(SOURCE)}
             {BEFORE_DIAMETER.map(heading)}
             {heading(diameter)}
             {otherDiameters && (
@@ -230,19 +257,32 @@ export function TallyTable({
               <td className="pick" onClick={(event) => event.stopPropagation()}>
                 <input
                   type="checkbox"
-                  title="Write this cutter to the holding library. Shift-click to tick every line from the last one clicked."
+                  title={
+                    row.writable
+                      ? 'Write this cutter to the holding library. Shift-click to tick every line from the last one clicked.'
+                      : NOT_WRITABLE
+                  }
                   checked={row.in_library}
-                  disabled={locked}
+                  disabled={locked || !row.writable}
                   onChange={() => undefined}
                   onClick={(event) => {
                     const picked = !row.in_library
-                    const run = event.shiftKey ? rowsBetween(shownRows, anchor.current, rowKey(row)) : []
+                    const run = (
+                      event.shiftKey ? rowsBetween(shownRows, anchor.current, rowKey(row)) : []
+                    ).filter((line) => line.writable)
                     if (run.length > 1) onPickMany(run.map(libraryLine), picked)
                     else onPick(row.cutter_key, picked, row.assembly_key ?? null)
                     anchor.current = rowKey(row)
                   }}
                 />
               </td>
+              {mixed && (
+                <td>
+                  <span className={row.source === 'fusion' ? 'tag source' : 'tag source other'}>
+                    {sourceLabel(row.source)}
+                  </span>
+                </td>
+              )}
               <td>{row.tool_type}</td>
               <td className="num main">{dia.shown}</td>
               {otherDiameters && <td className="other">{dia.other}</td>}

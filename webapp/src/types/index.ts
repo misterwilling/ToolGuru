@@ -22,6 +22,8 @@ export interface TallyRow {
   machines: string[]
   units: string[]
   in_library: boolean // ticked for the holding library
+  source: string // where the cutter was read from: 'fusion' or another CAM system
+  writable: boolean // can be written to a Fusion tool library: false for a cutter with no Fusion scan
   merged: number // scanned cutters this line stands for; more than 1 after "treat as same"
   // Present only when counting by assembly.
   assembly_key?: string
@@ -152,7 +154,7 @@ export interface CutterDetail extends TallyRow {
   variants: { differs: string[]; members: SimilarMember[] } | null // what a merged line was merged from
   /** Its place in the holding library: `choice` is the assembly picked for it (null: the usual one),
    *  `assembly_key` the one it is, or would be, written in. */
-  library: { picked: boolean; choice: string | null; assembly_key: string }
+  library: { picked: boolean; choice: string | null; assembly_key: string | null; writable: boolean }
   speeds: Speeds
   presets: DetailPreset[]
   usual: { tool_number: number | null; machine: string | null; assembly_key: string | null }
@@ -233,6 +235,7 @@ export interface AppState {
   databases: SavedDatabase[] | null // the saved databases, while their panel is open
   similar: SimilarView | null // the similar-cutters screen, while it is open
   libraryCount: number // cutters ticked for the holding library
+  uncreditedTimeS: number // cutting time that could not be given to any tool
   lastScan: LastScan | null
   browser: Browser | null
   confirmScan: ConfirmScan | null
@@ -243,6 +246,7 @@ export interface AppState {
 
 export type SortKey =
   | 'tool_type'
+  | 'source'
   | 'description'
   | 'merged'
   | 'diameter_mm'

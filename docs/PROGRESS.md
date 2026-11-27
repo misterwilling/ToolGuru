@@ -388,6 +388,51 @@ pushed.
     every version that operations picked.
   - Tests: `test_holding.py` (TestCombinedCuttingData); the in-Fusion
     library test now writes two presets on one tool. In-Fusion: 36 of 36.
+- Import scan file (2026-11-27, branch `mastercam-import`, NOT committed).
+  The Mastercam harvester (a separate Mastercam add-in, outside this repo)
+  writes one JSON line per part file; "Import scan file…" reads that file.
+  - `toolguru_lib/scan_file.py` reads the file: the last line for a part
+    file counts (the harvester adds a line each time it reads a file again),
+    and files it could not read are counted, not imported.
+  - `toolguru_lib/mastercam.py` turns one part file into a document and its
+    observations. Tools are rewritten under Fusion's names for types and
+    dimensions (ball end mill radius, tip diameter per type, tip angle as
+    taper or point angle, threads per inch as pitch, holder profile turned
+    tool-end first). The document is known by its path; first and last used
+    come from the part's own history.
+  - The owner's choice: Mastercam cutters are kept apart from Fusion ones.
+    The tool carries `source: mastercam`, which `cutter.identify` puts in
+    the key. A Fusion cutter's key is unchanged (pinned by a test). The
+    similar-cutters screen still offers the two together, so they can be
+    merged by hand.
+  - Cutting time. A ghosted operation (posting off) counts as a use but its
+    own time is not counted: in the owner's data ghosting is nearly always
+    the original of a transform. A posted transform's time is given to tools
+    only when it is an exact whole multiple of a set of operations before it
+    (the ghosted ones, the whole run, the last few, or what the transform
+    before it repeated). Otherwise it is kept per program as
+    `documents.uncredited_time_s` and shown under the totals. On the owner's
+    52-file trial: 33 of 37 transforms were credited, 31 minutes were not.
+  - NEVER WRITTEN TO FUSION. A read-only MCP probe that fed converted tools
+    to `Tool.createFromJson` crashed Fusion (2026-11-27, 11:14). Which
+    record did it is not known: the batch included an unknown tool type and
+    an empty presets list. So `holding.py` only ever writes tools Fusion
+    itself wrote: a line with no Fusion scan cannot be ticked
+    (`line['writable']`), and a line merged from both is written from its
+    Fusion scans. Do not probe converted tools in a Fusion session with
+    unsaved work, and one tool at a time.
+  - Palette: "Import scan file…" (the file dialog opens from a custom event,
+    API-5), a "From" column and a source filter once there is more than
+    Fusion, ticks disabled on Mastercam-only lines, "Read from" in the
+    geometry and in similar groups, and the uncredited time under the totals.
+  - Checked on a scratch copy of the owner's data with the real harvest file:
+    28 programs, 617 operations, 60 cutters added beside the 120 Fusion
+    ones; importing twice changes nothing; 7 similar suggestions mix the two.
+  - Tests: `test_mastercam.py`, `test_scan_file.py` (pytest, 482 passing),
+    `utils.test.ts` (153). In-Fusion: 36 of 36 after the change, with the
+    add-in restarted on the new code. No in-Fusion test covers the import:
+    it is pure Python, and its file dialog cannot be driven. The button has
+    not yet been clicked in live Fusion.
 
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:
@@ -401,11 +446,18 @@ The sweep can carry on to further folders at any time. Later: 5 compare
 a program against the Hub standard (by assembly, with the tool-number
 check); 6 opt-in swap to standard.
 
-A separate Mastercam 2022 harvester is being probed outside this repo. If it
-goes ahead, this add-in gains only a generic "Import scan file"; it stays
-Fusion-only.
+The Mastercam 2022 harvester lives outside this repo. This add-in has only
+the generic "Import scan file" (see In flight); it never talks to Mastercam.
 
 ## Open questions
+- Mastercam cutters cannot be written to the holding library. That needs a
+  tool record Fusion is proven to accept, found without crashing Fusion on
+  the owner's work.
+- The harvester does not record whether a part is inch or metric. The import
+  takes the unit from each operation's tool, which was right for every
+  operation in the trial (all inch parts). A metric part has not been seen.
+- Mastercam's cycle time may include rapid moves; Fusion's figure is feed
+  time only. Not compared.
 - Re-saving an old program today moves its "last used" to today. One scanned
   program is in that state. No rule chosen yet.
 - Suppressed operations are skipped. Confirm that is the wanted rule.

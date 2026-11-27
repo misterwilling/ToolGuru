@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS documents (
     date_created INTEGER NOT NULL,
     date_modified INTEGER NOT NULL,
     scanned_at INTEGER,
-    scan_level INTEGER NOT NULL DEFAULT 1
+    scan_level INTEGER NOT NULL DEFAULT 1,
+    uncredited_time_s REAL
 );
 CREATE TABLE IF NOT EXISTS observations (
     id INTEGER PRIMARY KEY,
@@ -113,6 +114,7 @@ _ADDED_COLUMNS = {
 _ADDED_DOCUMENT_COLUMNS = {
     'scanned_at': 'INTEGER',
     'scan_level': 'INTEGER NOT NULL DEFAULT 1',
+    'uncredited_time_s': 'REAL',
 }
 
 
@@ -181,10 +183,36 @@ class Store:
             conn.execute(doc_sql, astuple(document))
             conn.executemany(obs_sql, [astuple(o) for o in observations])
 
+    def replace_documents(
+            self, programs: list[tuple[DocumentRecord, list[ObservationRecord]]]) -> None:
+        """Store many programs at once, each replacing any earlier scan of
+        it: all of them, or none if anything goes wrong. A program with no
+        observations is only removed."""
+        doc_sql = 'INSERT INTO documents ({}) VALUES ({})'.format(
+            ', '.join(_DOCUMENT_COLUMNS), ', '.join('?' * len(_DOCUMENT_COLUMNS)))
+        obs_sql = 'INSERT INTO observations ({}) VALUES ({})'.format(
+            ', '.join(_OBSERVATION_COLUMNS),
+            ', '.join('?' * len(_OBSERVATION_COLUMNS)))
+        with closing(self._connect()) as conn, conn:
+            for document, observations in programs:
+                conn.execute('DELETE FROM documents WHERE file_id = ?',
+                             (document.file_id,))
+                if observations:
+                    conn.execute(doc_sql, astuple(document))
+                    conn.executemany(obs_sql, [astuple(o) for o in observations])
+
     def remove_document(self, file_id: str) -> None:
         """Forget one document and its observations."""
         with closing(self._connect()) as conn, conn:
             conn.execute('DELETE FROM documents WHERE file_id = ?', (file_id,))
+
+    def uncredited_time_s(self) -> float:
+        """Cutting time, over every program, that could not be given to any
+        tool (see DocumentRecord.uncredited_time_s)."""
+        with closing(self._connect()) as conn:
+            total = conn.execute(
+                'SELECT SUM(uncredited_time_s) FROM documents').fetchone()[0]
+        return round(total or 0.0, 3)
 
     def counts(self) -> dict[str, int]:
         with closing(self._connect()) as conn:

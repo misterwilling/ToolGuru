@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from toolguru_lib import holding, saved
+from toolguru_lib import holding, saved, scan_file
 from toolguru_lib import settings as user_settings
 from toolguru_lib import similar
 from toolguru_lib import store as scan_store
@@ -27,6 +27,8 @@ from .state import AppState
 
 RESET_WORD = 'RESET'
 SCANNING = 'Stop the folder scan first.'
+NOT_WRITABLE = ('This cutter was only read from Mastercam. It cannot be written '
+                'to a Fusion tool library yet.')
 NO_OPERATIONS = 'No operations with tools.'
 
 ScanOne = Callable[[str], tuple[DocumentRecord, list[ObservationRecord]]]
@@ -49,7 +51,10 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
         tally = build_tally(rows)
     library = holding.entries(
         rows, store.library_picks(), settings.stickout_tolerance_mm)
+    writable = holding.writable(rows)
     for line in tally:
+        # False for a cutter with no Fusion scan: see holding.py.
+        line['writable'] = line['cutter_key'] in writable
         written = library.get(line['cutter_key'])
         # Counting by assembly, only the assembly that will be written is ticked.
         line['in_library'] = written is not None and (
@@ -79,7 +84,7 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
         unchanged = len(_unchanged(state.proposed_scan['files'], store))
     return state.serialize(
         counts, tally, settings, store.job(), detail, databases, similar_view,
-        len(library), unchanged)
+        len(library), unchanged, store.uncredited_time_s())
 
 
 def _detail_library(rows: list[dict], picks: dict[str, str | None],
@@ -92,10 +97,15 @@ def _detail_library(rows: list[dict], picks: dict[str, str | None],
     written = library.get(cutter_key) or holding.entry(
         [row for row in rows if row['cutter_key'] == cutter_key], None,
         tolerance_mm)
+    if written is None:
+        # No Fusion scan to write from: see holding.py.
+        return {'picked': False, 'choice': None, 'assembly_key': None,
+                'writable': False}
     return {
         'picked': bool(keys),
         'choice': next((picks[key] for key in keys if picks[key] is not None), None),
         'assembly_key': written['assembly_key'],
+        'writable': True,
     }
 
 
@@ -205,6 +215,59 @@ def scan_failed(state: AppState, message: str) -> None:
     state.error = message
 
 
+# --- Scan files -----------------------------------------------------------------
+# Programs read outside Fusion (today: by the Mastercam harvester) come in as
+# a file. Importing one is a scan of every program in it.
+
+def _count(count: int, one: str, many: str) -> str:
+    return f'{count} {one if count == 1 else many}'
+
+
+def _duration(seconds: float) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 60:
+        return f'{minutes} min'
+    return f'{minutes // 60} h {minutes % 60:02d} min'
+
+
+def import_scan_file(state: AppState, path: Path,
+                     base_dir: Path | None = None) -> None:
+    """Add the programs in a scan file to the data. A program that is
+    already there is replaced, so importing a file twice changes nothing."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    try:
+        found = scan_file.read(path)
+    except ScanError as error:
+        state.error = str(error)
+        return
+    _store(base_dir).replace_documents(found.programs)
+    programs = [(document, observations)
+                for document, observations in found.programs if observations]
+    observations = [o for _, group in programs for o in group]
+    parts = [
+        f"Imported {_count(len(programs), 'program', 'programs')} from "
+        f"“{path.name}”: {_count(len(observations), 'operation', 'operations')} using "
+        f"{_count(len({o.cutter_key for o in observations}), 'cutter', 'cutters')}."]
+    empty = len(found.programs) - len(programs)
+    if empty:
+        parts.append(f"{_count(empty, 'file', 'files')} had no operations with tools.")
+    if found.not_read:
+        parts.append(f"{_count(found.not_read, 'file', 'files')} could not be read "
+                     'when the scan file was made.')
+    without_time = sum(1 for o in observations if o.cutting_time_s is None)
+    if without_time:
+        parts.append(f"{_count(without_time, 'operation has', 'operations have')} "
+                     'no cutting time.')
+    uncredited = sum(document.uncredited_time_s or 0.0 for document, _ in programs)
+    if uncredited:
+        parts.append(f'{_duration(uncredited)} of repeated (transform) cutting '
+                     'time could not be given to a tool.')
+    state.last_scan = None
+    state.notice = ' '.join(parts)
+
+
 def reset_data(state: AppState, confirm: str, stamp: str,
                base_dir: Path | None = None) -> None:
     """Back up, then empty, the scan data. Needs the typed word."""
@@ -298,6 +361,9 @@ def pick_for_library(state: AppState, cutter_key: str, picked: bool,
     if not picked:
         store.unpick_for_library(keys)
         return
+    if cutter_key not in holding.writable(rows):
+        state.error = NOT_WRITABLE
+        return
     tolerance = user_settings.load(base_dir).stickout_tolerance_mm
     if (assembly_key is not None
             and assembly_key not in holding.assembly_keys(rows, cutter_key, tolerance)):
@@ -314,7 +380,8 @@ def pick_many_for_library(state: AppState, lines: object, picked: bool,
     A cutter that is already ticked keeps the holder and stickout chosen for
     it. A cutter named by one line is ticked in that line's assembly; one
     named by several lines (counting by assembly) is ticked in its usual one.
-    Lines for cutters that are not in the data are passed over.
+    Lines for cutters that are not in the data are passed over, and so are
+    lines that cannot be written to Fusion (see holding.py).
     """
     if refuse_while_scanning(state):
         return
@@ -328,6 +395,7 @@ def pick_many_for_library(state: AppState, lines: object, picked: bool,
     rows = similar.apply_merges(store.observation_rows(), store.merged_cutters())
     tolerance = user_settings.load(base_dir).stickout_tolerance_mm
     already = store.library_picks()
+    writable = holding.writable(rows)
     wanted: dict[str, list[str | None]] = {}
     for line in lines:
         wanted.setdefault(line['cutterKey'], []).append(line.get('assemblyKey') or None)
@@ -337,7 +405,7 @@ def pick_many_for_library(state: AppState, lines: object, picked: bool,
             continue
         if not picked:
             store.unpick_for_library(keys)
-        elif not already.keys() & keys:
+        elif cutter_key in writable and not already.keys() & keys:
             assembly_key = assemblies[0] if len(assemblies) == 1 else None
             if assembly_key not in holding.assembly_keys(rows, cutter_key, tolerance):
                 assembly_key = None

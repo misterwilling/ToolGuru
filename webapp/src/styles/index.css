@@ -422,6 +422,9 @@ h3 {
   font-size: 11px;
 }
 .tag.count { margin: 0; }
+/* Where a cutter was read from. Fusion's is quiet; another system's stands out. */
+.tag.source { margin: 0; background: transparent; border-color: transparent; color: var(--muted); padding-left: 0; }
+.tag.source.other { background: var(--confirm-bg); border-color: var(--confirm-border); color: var(--text); padding-left: 6px; }
 /* The tick that puts a cutter in the holding library. */
 th.pick, td.pick {
   text-align: center;

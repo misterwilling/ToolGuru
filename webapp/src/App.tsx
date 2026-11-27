@@ -9,7 +9,14 @@ import { SimilarScreen } from './components/SimilarScreen'
 import { Stats } from './components/Stats'
 import { TallyTable } from './components/TallyTable'
 import type { AppState, CountBy, LengthUnit } from './types'
-import { countsSummary, formatTolerance, isAppState, toleranceToMm, writeLibraryLabel } from './utils'
+import {
+  countsSummary,
+  formatTolerance,
+  isAppState,
+  toleranceToMm,
+  uncreditedNote,
+  writeLibraryLabel,
+} from './utils'
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null)
@@ -90,6 +97,14 @@ export function App() {
       </header>
 
       <Stats counts={state.counts} assemblies={assemblies} />
+      {state.uncreditedTimeS > 0 && (
+        <p
+          className="muted"
+          title="A Mastercam transform repeats other operations. Its time is given to tools only when it is an exact multiple of the operations before it."
+        >
+          {uncreditedNote(state.uncreditedTimeS)}
+        </p>
+      )}
 
       <div className="actions">
         <button className="primary" disabled={locked} onClick={() => run('scan_active')}>
@@ -100,6 +115,13 @@ export function App() {
           onClick={() => run('browse_folder', { folderId: '' })}
         >
           Scan a folder…
+        </button>
+        <button
+          title="Adds the programs in a scan file, such as the harvest.jsonl written by the Mastercam harvester"
+          disabled={locked}
+          onClick={() => run('import_scan_file')}
+        >
+          Import scan file…
         </button>
         <button
           className={state.similar ? 'selected' : undefined}
@@ -230,7 +252,8 @@ export function App() {
       )}
       {state.tally.length === 0 ? (
         <p className="muted">
-          No tools yet. Open a program and click “Scan active document”, or scan a folder.
+          No tools yet. Open a program and click “Scan active document”, scan a folder, or import a scan
+          file.
         </p>
       ) : (
         // Hidden, not removed, while a detail is open: the sort and filter are kept.

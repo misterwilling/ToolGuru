@@ -376,7 +376,7 @@ class TestDetail:
         scan(tmp_path, 'a', tool())
         assert self._detail(tmp_path) == {
             'picked': False, 'choice': None,
-            'assembly_key': assembly_of(tmp_path, 'Test Holder')}
+            'assembly_key': assembly_of(tmp_path, 'Test Holder'), 'writable': True}
 
     def test_a_chosen_assembly_is_shown_as_the_choice(self, tmp_path):
         scan(tmp_path, 'a', tool())
@@ -385,7 +385,7 @@ class TestDetail:
         other = assembly_of(tmp_path, 'Other Holder')
         actions.pick_for_library(AppState(), key(tool()), True, other, tmp_path)
         assert self._detail(tmp_path) == {
-            'picked': True, 'choice': other, 'assembly_key': other}
+            'picked': True, 'choice': other, 'assembly_key': other, 'writable': True}
 
 
 class TestMergedLines:

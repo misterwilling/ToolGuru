@@ -38,6 +38,9 @@ class DocumentRecord:
     date_modified: int  # UNIX epoch seconds
     scanned_at: int | None = None   # when it was read; None for older scans
     scan_level: int = SCAN_LEVEL    # what that scan recorded
+    # Cutting time in the program that could not be given to any tool: a
+    # Mastercam transform whose repeated operations are not known.
+    uncredited_time_s: float | None = None
 
 
 @dataclass(frozen=True)

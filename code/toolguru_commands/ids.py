@@ -34,3 +34,7 @@ PALETTE_HEIGHT = 640
 # Custom event that turns the folder scan: one program per firing, so Fusion
 # handles clicks (Stop, for one) between programs.
 SCAN_EVENT_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_scanStep'
+
+# Custom event that asks for a scan file to import. Fusion's file dialog
+# blocks, so it is never opened from inside the palette's own event.
+IMPORT_EVENT_ID = f'{COMPANY_NAME}_{ADDIN_NAME}_importScanFile'

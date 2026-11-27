@@ -228,7 +228,31 @@ const FIELD_ROWS: { key: string; label: string; kind: 'length' | 'angle' | 'coun
   { key: 'TA', label: 'Taper angle', kind: 'angle' },
   { key: 'SIG', label: 'Tip angle', kind: 'angle' },
   { key: 'material', label: 'Material', kind: 'text' },
+  { key: 'source', label: 'Read from', kind: 'text' },
 ]
+
+const SOURCE_LABELS: Record<string, string> = { fusion: 'Fusion', mastercam: 'Mastercam' }
+
+/** The name of the CAM system a cutter was read from, as shown. */
+export function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source
+}
+
+/** A text field as shown: where a cutter was read from is given its proper name. */
+function fieldText(key: string, value: string): string {
+  return key === 'source' ? sourceLabel(value) : value
+}
+
+/** The CAM systems the tally's cutters were read from, Fusion first. */
+export function sourcesIn(rows: TallyRow[]): string[] {
+  const found = [...new Set(rows.map((row) => row.source))]
+  return found.sort((a, b) => Number(b === 'fusion') - Number(a === 'fusion') || a.localeCompare(b))
+}
+
+/** "Transform time not credited to a tool: 31m 00s", or '' when there is none. */
+export function uncreditedNote(seconds: number): string {
+  return seconds > 0 ? `Transform time not credited to a tool: ${formatDuration(seconds)}` : ''
+}
 
 /** One line of a cutter's geometry. `other` is a length in the other unit (see LengthParts), '' otherwise. */
 export interface FieldRow {
@@ -244,7 +268,7 @@ export function cutterFieldRows(fields: CutterFields, units: string[], display: 
   for (const { key, label, kind } of FIELD_ROWS) {
     const value = fields[key]
     if (value === undefined || value === '') continue
-    if (kind === 'text') rows.push({ label, value: String(value), other: '' })
+    if (kind === 'text') rows.push({ label, value: fieldText(key, String(value)), other: '' })
     else if (typeof value !== 'number') continue
     else if (kind === 'length') {
       const parts = lengthParts(value, value, display, both, true)
@@ -317,7 +341,8 @@ export function libraryLine(row: TallyRow): LibraryLine {
  */
 export function tickedState(shown: TallyRow[], rows: TallyRow[]): 'all' | 'some' | 'none' {
   const ticked = new Set(rows.filter((row) => row.in_library).map((row) => row.cutter_key))
-  const cutters = new Set(shown.map((row) => row.cutter_key))
+  // A line that cannot be written cannot be ticked, so it does not count.
+  const cutters = new Set(shown.filter((row) => row.writable).map((row) => row.cutter_key))
   let count = 0
   cutters.forEach((key) => {
     if (ticked.has(key)) count += 1
@@ -412,7 +437,9 @@ export function variantCells(
     if (typeof value === 'number') {
       text = kind === 'length' ? inUnit(value, display) : kind === 'angle' ? `${Number(value.toFixed(3))}°` : String(value)
     } else if (typeof value === 'string' && value !== '') {
-      text = value
+      text = fieldText(key, value)
+    } else if (key === 'source') {
+      text = sourceLabel('fusion') // a Fusion cutter carries no source
     }
     return { text, differs: value !== first.fields[key] }
   })
@@ -536,11 +563,17 @@ export function validChoice(rows: TallyRow[], choice: string): string {
   return rows.some((row) => matchesChoice(row, choice)) ? choice : 'all'
 }
 
+/** A picked source that is no longer in the data falls back to all of them. */
+export function validSource(rows: TallyRow[], source: string): string {
+  return rows.some((row) => row.source === source) ? source : 'all'
+}
+
 /** `choice` is a drop-down choice (see above). Text matches description, type, holder, or a tool number (7 or T7). */
-export function filterTally(rows: TallyRow[], text: string, choice: string): TallyRow[] {
+export function filterTally(rows: TallyRow[], text: string, choice: string, source = 'all'): TallyRow[] {
   const needle = text.trim().toLowerCase()
   return rows.filter((row) => {
     if (!matchesChoice(row, choice)) return false
+    if (source !== 'all' && row.source !== source) return false
     if (needle === '') return true
     const haystack = [
       row.description,

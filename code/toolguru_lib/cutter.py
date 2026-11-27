@@ -5,6 +5,10 @@ geometry match after converting lengths to millimetres. Holder, stick-out,
 tool number, description and feeds/speeds are deliberately left out — those
 describe an assembly or a use, not the cutter.
 
+A tool read from another CAM system names it in `source`, and that is part
+of its identity: such a cutter is never the same cutter as a Fusion one,
+whatever its geometry. The user can still merge the two by hand.
+
 Pure Python: takes the dict parsed from Fusion's `Tool.toJson()`.
 """
 
@@ -116,14 +120,20 @@ def identify(tool: dict) -> Cutter | None:
             normalized[key] = Decimal(int(number))
 
     material = str(tool.get('BMC') or '')
-    canonical = json.dumps(
-        {'type': tool_type, 'material': material,
-         **{k: f'{v:.3f}' for k, v in normalized.items()}},
-        sort_keys=True)
+    source = str(tool.get('source') or '')
+    identity = {'type': tool_type, 'material': material,
+                **{k: f'{v:.3f}' for k, v in normalized.items()}}
+    if source:
+        # Left out for a Fusion tool, so the keys of cutters scanned before
+        # other sources existed stay what they were.
+        identity['source'] = source
+    canonical = json.dumps(identity, sort_keys=True)
     key = hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:16]
 
     fields: dict = {k: float(v) for k, v in normalized.items()}
     if 'NOF' in fields:
         fields['NOF'] = int(fields['NOF'])
     fields['material'] = material
+    if source:
+        fields['source'] = source
     return Cutter(key=key, tool_type=tool_type, family=family, fields=fields)
