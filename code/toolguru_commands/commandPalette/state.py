@@ -15,6 +15,7 @@ class AppState:
         self.last_scan: dict | None = None
         self.selected_cutter: str | None = None   # the cutter whose detail is open
         self.databases_open: bool = False         # the saved-databases panel is showing
+        self.similar_open: bool = False           # the similar-cutters screen is showing
         self.notice: str = ''
         self.error: str = ''
         # Folder scan. The queue itself is in the data file; these are only
@@ -33,10 +34,12 @@ class AppState:
 
     def serialize(self, counts: dict, tally: list[dict], settings: Settings,
                   job: dict | None = None, detail: dict | None = None,
-                  databases: list[dict] | None = None) -> dict:
+                  databases: list[dict] | None = None,
+                  similar: dict | None = None) -> dict:
         """`job` is the folder scan under way (see Store.job), if any.
         `detail` is the open cutter's detail (see detail.build_cutter_detail).
-        `databases` is the list of saved databases while its panel is open."""
+        `databases` is the list of saved databases while its panel is open.
+        `similar` is the similar-cutters screen's content while it is open."""
         proposed = self.proposed_scan
         return {
             'counts': dict(counts),
@@ -47,6 +50,7 @@ class AppState:
             'tally': tally,
             'detail': detail,
             'databases': databases,
+            'similar': similar,
             'lastScan': dict(self.last_scan) if self.last_scan else None,
             'browser': self.browser,
             'confirmScan': ({'folder': proposed['folder'],

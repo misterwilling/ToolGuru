@@ -15,6 +15,7 @@ from pathlib import Path
 
 from toolguru_lib import saved
 from toolguru_lib import settings as user_settings
+from toolguru_lib import similar
 from toolguru_lib import store as scan_store
 from toolguru_lib.detail import build_cutter_detail
 from toolguru_lib.records import (
@@ -39,18 +40,30 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
     """The full state sent to the palette after every action."""
     store = _store(base_dir)
     settings = user_settings.load(base_dir)
-    rows = store.observation_rows()
+    scanned = store.observation_rows()
+    merged = store.merged_cutters()
+    rows = similar.apply_merges(scanned, merged)
     if settings.count_by == 'assembly':
         tally = build_assembly_tally(rows, settings.stickout_tolerance_mm)
     else:
         tally = build_tally(rows)
     detail = None
     if state.selected_cutter is not None:
+        # A cutter that has since been merged is found under its group's line.
+        shown = similar.shown_key(scanned, merged, state.selected_cutter)
         detail = build_cutter_detail(
-            rows, state.selected_cutter, settings.stickout_tolerance_mm)
+            rows, shown, settings.stickout_tolerance_mm)
     databases = saved.list_saved(base_dir) if state.databases_open else None
+    similar_view = None
+    if state.similar_open:
+        similar_view = {
+            'suggestions': similar.suggest(scanned, merged, store.not_similar()),
+            'merged': similar.merged_groups(scanned, merged),
+        }
+    counts = store.counts()
+    counts['cutters'] = len({row['cutter_key'] for row in rows})   # after merging
     return state.serialize(
-        store.counts(), tally, settings, store.job(), detail, databases)
+        counts, tally, settings, store.job(), detail, databases, similar_view)
 
 
 def refuse_while_scanning(state: AppState) -> bool:
@@ -160,7 +173,64 @@ def reset_data(state: AppState, confirm: str, stamp: str,
     backup = _store(base_dir).backup_and_clear(stamp)
     state.last_scan = None
     state.selected_cutter = None
+    state.similar_open = False
     state.notice = f'Data reset. Backup saved as {backup.name}.'
+
+
+# --- Similar cutters ----------------------------------------------------------
+# Cutters with the same cutting end are suggested; the user says whether they
+# are one tool. Only the decision is stored.
+
+def open_similar(state: AppState) -> None:
+    state.begin_action()
+    state.similar_open = True
+    state.selected_cutter = None
+
+
+def close_similar(state: AppState) -> None:
+    state.begin_action()
+    state.similar_open = False
+
+
+def merge_cutters(state: AppState, cutter_keys: object,
+                  base_dir: Path | None = None) -> None:
+    """Treat a suggested group of cutters as one tool."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    if (not isinstance(cutter_keys, list) or len(set(cutter_keys)) < 2
+            or not all(isinstance(key, str) and key for key in cutter_keys)):
+        state.error = 'Pick two or more cutters to treat as the same.'
+        return
+    _store(base_dir).merge_cutters(cutter_keys)
+    state.notice = (f'{len(set(cutter_keys))} cutters are now counted as one. '
+                    'Split them again from this screen at any time.')
+
+
+def split_cutters(state: AppState, cutter_key: str,
+                  base_dir: Path | None = None) -> None:
+    """Undo a merge: its cutters are counted apart again."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    count = _store(base_dir).split_cutters(cutter_key)
+    if count == 0:
+        state.error = 'That cutter is not merged with any other.'
+        return
+    state.selected_cutter = None
+    state.notice = f'Split: {count} cutters are counted apart again.'
+
+
+def not_similar(state: AppState, signature: str,
+                base_dir: Path | None = None) -> None:
+    """Stop suggesting one group. It comes back only if a new cutter joins it."""
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    if not signature:
+        state.error = 'No suggestion was named.'
+        return
+    _store(base_dir).mark_not_similar(signature)
 
 
 # --- Saved databases ----------------------------------------------------------
@@ -227,6 +297,7 @@ def load_database(state: AppState, name: str, mode: str, stamp: str,
     state.last_scan = None
     state.selected_cutter = None
     state.databases_open = False
+    state.similar_open = False
 
 
 # --- Folder scan --------------------------------------------------------------

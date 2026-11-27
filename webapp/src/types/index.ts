@@ -21,6 +21,7 @@ export interface TallyRow {
   tool_numbers: number[]
   machines: string[]
   units: string[]
+  merged: number // scanned cutters this line stands for; more than 1 after "treat as same"
   // Present only when counting by assembly.
   assembly_key?: string
   holder?: string
@@ -71,6 +72,7 @@ export interface DetailProgram {
   time_s: number
   tool_numbers: Marked<number>[]
   machines: Marked<string>[]
+  presets: { name: string; changed: boolean }[]
   setups: ProgramSetup[] // most operations first
 }
 
@@ -82,8 +84,73 @@ export type CutterFields = Record<string, number | string>
  * programs. `usual` names the tool number, machine and assembly most
  * programs used; each is null when the top two were used equally.
  */
+/** The lowest, highest and most often used value of a speed or feed. */
+export interface Spread {
+  min: number
+  max: number
+  most_used: number | null // null when the top two were used equally often
+  operations: number
+}
+
+/** What a cutter ran at. A spread is null when no operation has a number. */
+export interface Speeds {
+  spindle_rpm: Spread | null
+  feed_mm_min: Spread | null
+  operations_without: number // scanned before the numbers were recorded, or never set
+}
+
+/**
+ * One preset (Fusion's name for a tool's cutting data) that operations
+ * picked. Numbers are in millimetres, mm/min, m/min and rpm; null when the
+ * preset has none.
+ */
+export interface DetailPreset {
+  name: string
+  spindle_rpm: number | null
+  feed_mm_min: number | null
+  chip_load_mm: number | null
+  surface_m_min: number | null
+  plunge_mm_min: number | null
+  ramp_mm_min: number | null
+  ramp_rpm: number | null
+  stepover_mm: number | null
+  stepdown_mm: number | null
+  programs: number
+  operations: number
+  changed: number // operations run at a different speed or feed
+  unchecked: number // operations where that cannot be told
+}
+
+/** One scanned cutter in a group of similar ones, with its own usage. */
+export interface SimilarMember {
+  cutter_key: string
+  description: string
+  fields: CutterFields
+  programs: number
+  operations: number
+  time_s: number
+  merged?: boolean // in a suggestion: already treated as the same as another
+}
+
+/** Cutters shown side by side, most used first. `differs` names the fields that are not the same in all. */
+export interface SimilarGroup {
+  tool_type: string
+  differs: string[]
+  members: SimilarMember[]
+  signature?: string // a suggestion's name, for "not the same"
+  cutter_key?: string // a merged group's line in the tally
+}
+
+export interface SimilarView {
+  suggestions: SimilarGroup[]
+  merged: SimilarGroup[]
+}
+
 export interface CutterDetail extends TallyRow {
   fields: CutterFields
+  variants: { differs: string[]; members: SimilarMember[] } | null // what a merged line was merged from
+  speeds: Speeds
+  presets: DetailPreset[]
   usual: { tool_number: number | null; machine: string | null; assembly_key: string | null }
   tool_number_use: Use<number>[]
   machine_use: Use<string>[]
@@ -158,6 +225,7 @@ export interface AppState {
   tally: TallyRow[]
   detail: CutterDetail | null // the cutter opened from the tally, if any
   databases: SavedDatabase[] | null // the saved databases, while their panel is open
+  similar: SimilarView | null // the similar-cutters screen, while it is open
   lastScan: LastScan | null
   browser: Browser | null
   confirmScan: ConfirmScan | null

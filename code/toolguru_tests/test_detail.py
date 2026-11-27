@@ -264,3 +264,49 @@ def test_programs_are_listed_latest_first_with_their_own_figures():
             for p in detail['program_list']] == [
         ('new', 'Program new', 900, 2, 4.0),
         ('old', 'Program old', 200, 1, 10.0)]
+
+
+# --- Speeds and feeds ---------------------------------------------------------
+
+def test_speeds_give_the_range_and_the_value_most_operations_used():
+    rows = [_row('a', spindle_rpm=8000.0, feed_mm_min=1016.0),
+            _row('a', spindle_rpm=8000.0, feed_mm_min=1016.0),
+            _row('b', spindle_rpm=12000.0, feed_mm_min=1524.0),
+            _row('c', spindle_rpm=6000.0, feed_mm_min=508.0)]
+    assert _detail(rows)['speeds'] == {
+        'spindle_rpm': {'min': 6000.0, 'max': 12000.0, 'most_used': 8000.0,
+                        'operations': 4},
+        'feed_mm_min': {'min': 508.0, 'max': 1524.0, 'most_used': 1016.0,
+                        'operations': 4},
+        'operations_without': 0,
+    }
+
+
+def test_values_used_equally_often_have_no_most_used_one():
+    rows = [_row('a', spindle_rpm=8000.0), _row('b', spindle_rpm=9000.0)]
+    assert _detail(rows)['speeds']['spindle_rpm'] == {
+        'min': 8000.0, 'max': 9000.0, 'most_used': None, 'operations': 2}
+
+
+def test_operations_without_numbers_are_counted_and_left_out_of_the_range():
+    """Rows scanned before the numbers were recorded hold nothing for them."""
+    rows = [_row('a', spindle_rpm=8000.0, feed_mm_min=1016.0),
+            _row('b', spindle_rpm=None, feed_mm_min=None),
+            _row('c', spindle_rpm=None, feed_mm_min=None)]
+    speeds = _detail(rows)['speeds']
+    assert speeds['spindle_rpm'] == {
+        'min': 8000.0, 'max': 8000.0, 'most_used': 8000.0, 'operations': 1}
+    assert speeds['operations_without'] == 2
+
+
+def test_a_cutter_with_no_numbers_at_all_has_no_range():
+    rows = [_row('a', spindle_rpm=None, feed_mm_min=None)]
+    assert _detail(rows)['speeds'] == {
+        'spindle_rpm': None, 'feed_mm_min': None, 'operations_without': 1}
+
+
+def test_an_operation_with_a_speed_but_no_feed_still_counts_as_having_numbers():
+    rows = [_row('a', spindle_rpm=500.0, feed_mm_min=None)]
+    speeds = _detail(rows)['speeds']
+    assert speeds['feed_mm_min'] is None
+    assert speeds['operations_without'] == 0

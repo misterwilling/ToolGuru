@@ -226,17 +226,81 @@ pushed.
     No Fusion API is involved, so there is no new in-Fusion test; the
     existing 26 were re-run on the new hash and pass.
 
+- Speeds and feeds as numbers (2026-11-26, same branch).
+  Milestone 4, slice 2.
+  - Probe, in a scratch program: a CAM parameter's `value.value` is the
+    number Fusion works the expression out to, formula or not.
+    `tool_spindleSpeed` comes in rpm and `tool_feedCutting` in mm/min,
+    whatever unit was typed (40 in/min reads 1016). A value never set reads
+    0. Other parameters do not share one unit (`tool_feedPerTooth` is in cm),
+    so nothing else is taken from them.
+  - A drilling operation has `tool_feedCutting` greyed out (`isEnabled` is
+    False); its feed is `tool_feedPlunge`. `extract._feed_parameter` picks
+    accordingly, and the stored feed expression is now that parameter's.
+  - Stored beside the expressions as `spindle_rpm` and `feed_mm_min`; 0 is
+    stored as nothing. An older data file gains the two columns empty, and
+    they fill when a program is scanned again.
+  - The cutter detail shows, under the geometry, the range and the most
+    used value of each (`detail._speeds`), the feed in in/min or mm/min by
+    the unit switch, and says how many operations have none recorded.
+  - Tests: `test_detail.py`, `test_store.py`, `utils.test.ts`, and a new
+    in-Fusion class `TestReadSpeeds`. In-Fusion: 30 of 30 pass.
+  - Not yet seen on a real program: the owner's data was scanned before
+    this, so every cutter shows "None recorded" until a rescan.
+
+- Cutting data (2026-11-26, same branch). The owner asked
+  for the cutting data that comes with a tool, and for customized data.
+  - No scan change was needed: `Tool.toJson()` already carries every preset
+    under `start-values.presets`, and each operation's preset name was
+    already stored. Presets are in the tool's own unit (inch tool: in/min,
+    inches, ft/min; millimetre tool: mm/min, mm, m/min);
+    `toolguru_lib/presets.py` turns them into mm, mm/min and m/min.
+  - The cutter detail lists the presets operations picked (the owner's
+    choice: not the unused ones), one line per distinct set of numbers,
+    with programs, operations and how many operations ran at a different
+    speed or feed ("Changed"). Columns chosen by the owner: rpm, feed,
+    surface speed, chip load, plunge, ramp, ramp rpm, stepover, stepdown.
+    No coolant.
+  - "Changed" uses the scanned numbers when present. For older scans it
+    reads what was typed when that is a plain number with a unit; formulas
+    are "not checked" until a rescan. An older drilling operation's feed is
+    not judged (the stored one was the unused cutting feed). The Programs
+    table has a "Cutting data" column, marked where an operation changed.
+  - There is no "own or Fusion sample" label. One was tried from the
+    preset's description text, and it called the owner's own presets
+    samples, because a copied preset keeps the sample text.
+  - Tests: `toolguru_tests/test_presets.py`, `utils.test.ts`. In-Fusion: 30
+    of 30 pass on the new hash.
+
+- Similar cutters (2026-11-26, same branch). Milestone
+  4, slice 3. The owner's choices: suggest cutters with the same cutting
+  end; "treat as same" merges them into one line everywhere; the merged
+  line shows the most used cutter; suggestions get their own screen.
+  - Rule (`toolguru_lib/similar.py`): same type, diameter, flute count,
+    corner radius, angles and thread pitch. Lengths, shaft and tip diameter
+    and material may differ. No weighted distance and no tolerance settings.
+    The owner's data gives 16 groups covering 37 of 141 cutters.
+  - Only decisions are stored, in two new tables of the data file:
+    `merged_cutters` (cutter key, group) and `not_similar` (a signature of
+    the exact set of cutters, so the question returns when a new cutter
+    joins). Observations are never altered. `similar.apply_merges` rewrites
+    the rows on their way to the tally and the detail, so a merged line's
+    key and geometry are its most used cutter's and can change as usage
+    does. Reset clears the decisions; a saved database carries them;
+    merging one database into another does not bring its decisions along.
+  - Palette: a "Similar…" button opens the screen (suggestions with "Treat
+    as same" and "Not the same", then the merged groups with "Split"). A
+    merged tally line carries an "N merged" tag, the cutter count in the
+    header follows the merges, and the detail has a "Merged from" table.
+  - Tests: `toolguru_tests/test_similar.py`, `utils.test.ts`. In-Fusion: 30
+    of 30 pass on the new hash.
+
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:
 1. Cutter detail — built, see In flight.
-2. Feeds and speeds as numbers. They are stored as Fusion expressions today
-   (plain numbers, numbers with units, and formulas), so the detail leaves
-   them out. Probe an operation's `tool_spindleSpeed` and `tool_feedCutting`
-   parameter values in a scratch program, store the numbers beside the
-   expressions, and show the range used. Needs a rescan to fill.
-3. Similar tools: a distance between cutters of one type, clusters shown
-   side by side with their usage, and a stored "treat as same" decision.
-   Nothing merges on its own.
+2. Feeds and speeds as numbers — built, see In flight. Needs a rescan to
+   fill.
+3. Similar tools — built, see In flight.
 4. Holding library: write the collapsed cutters to a Local tool library;
    resetting the data removes it.
 

@@ -407,7 +407,22 @@ h3 {
   align-items: start;
 }
 .detail h3 { margin-top: 0; }
-.detail .columns + h3 { margin-top: 14px; }
+.detail .columns + h3, .detail h3.after { margin-top: 14px; }
+.detail p.small { margin: 4px 0 0; }
+.detail .scroll.after, .detail div.after { margin-bottom: 14px; }
+/* A small label beside a description: "3 merged". */
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  color: var(--link);
+  font-size: 11px;
+}
+.tag.lead { margin: 0 6px 0 0; }
+.panel-head .actions { margin: 0; }
 .detail .note {
   font-weight: 400;
   color: var(--muted);

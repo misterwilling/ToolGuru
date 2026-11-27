@@ -184,7 +184,14 @@ export function TallyTable({ rows, countBy, display, descriptionWidth, onResized
               {otherDiameters && <td className="other">{dia.other}</td>}
               <td className="num">{row.flutes ?? ''}</td>
               <td>
-                <div className="clip" title={row.description}>{row.description}</div>
+                <div className="clip" title={row.description}>
+                  {row.merged > 1 && (
+                    <span className="tag lead" title="Similar cutters you chose to treat as the same">
+                      {row.merged} merged
+                    </span>
+                  )}
+                  {row.description}
+                </div>
               </td>
               <td className="num">{row.programs}</td>
               <td className="num">{row.operations}</td>

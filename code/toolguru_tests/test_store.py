@@ -129,3 +129,44 @@ def test_a_file_from_before_holders_were_recorded_is_upgraded(store):
     assert row['stickout_mm'] == 38.1
     reopened.replace_document(make_document('b'), [make_observation('b')])
     assert reopened.counts() == {'documents': 2, 'observations': 2, 'cutters': 1}
+
+
+def test_speed_and_feed_numbers_round_trip(store):
+    store.replace_document(make_document('a'), [
+        make_observation('a', spindle_rpm=8000.0, feed_mm_min=1016.0)])
+    row = store.observation_rows()[0]
+    assert (row['spindle_rpm'], row['feed_mm_min']) == (8000.0, 1016.0)
+    assert (row['spindle_speed'], row['feed']) == ('8000', '40 in/min')
+
+
+def test_a_speed_or_feed_of_zero_is_stored_as_not_set(store):
+    """Fusion holds zero for a speed nobody set; it must not drag a range to 0."""
+    store.replace_document(make_document('a'), [
+        make_observation('a', spindle_rpm=0.0, feed_mm_min=0.0)])
+    row = store.observation_rows()[0]
+    assert (row['spindle_rpm'], row['feed_mm_min']) == (None, None)
+
+
+def test_a_feed_is_stored_to_a_thousandth(store):
+    store.replace_document(make_document('a'), [
+        make_observation('a', feed_mm_min=338.6666666666667)])
+    assert store.observation_rows()[0]['feed_mm_min'] == 338.667
+
+
+def test_a_file_from_before_speeds_were_numbers_gains_empty_columns(store):
+    """The numbers cannot be worked out from what an older file holds, so
+    they stay empty until a rescan, and everything else is left as it was."""
+    observation = make_observation('a')
+    store.replace_document(make_document('a'), [observation])
+    with closing(sqlite3.connect(store.path)) as conn, conn:
+        for column in ('spindle_rpm', 'feed_mm_min'):
+            conn.execute(f'ALTER TABLE observations DROP COLUMN {column}')
+        conn.execute("UPDATE observations SET holder_shape = 'kept'")
+
+    reopened = Store(store.path)
+
+    row = reopened.observation_rows()[0]
+    assert (row['spindle_rpm'], row['feed_mm_min']) == (None, None)
+    assert row['holder_shape'] == 'kept'   # the holder columns were not refilled
+    reopened.replace_document(make_document('b'), [make_observation('b')])
+    assert reopened.observation_rows()[1]['spindle_rpm'] == 8000.0

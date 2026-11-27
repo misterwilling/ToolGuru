@@ -49,12 +49,21 @@ CREATE TABLE IF NOT EXISTS observations (
     stickout_mm REAL,
     spindle_speed TEXT NOT NULL,
     feed TEXT NOT NULL,
+    spindle_rpm REAL,
+    feed_mm_min REAL,
     preset TEXT NOT NULL,
     cutting_time_s REAL,
     cutter_fields TEXT NOT NULL,
     tool_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS observations_by_cutter ON observations(cutter_key);
+CREATE TABLE IF NOT EXISTS merged_cutters (
+    cutter_key TEXT PRIMARY KEY,
+    merge_group TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS not_similar (
+    signature TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS scan_job (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     folder TEXT NOT NULL
@@ -76,11 +85,18 @@ INTERRUPTED = ('The scan stopped while this program was open. '
                'Scan it on its own to check it.')
 
 # Columns added after data files already existed. An older file gains them on
-# open and they are filled from each row's stored tool JSON.
-_ADDED_COLUMNS = {
+# open. The holder columns are filled from each row's stored tool JSON. The
+# speed and feed numbers cannot be: they stay empty until the program is
+# scanned again.
+_HOLDER_COLUMNS = {
     'holder_product_id': "TEXT NOT NULL DEFAULT ''",
     'holder_shape': "TEXT NOT NULL DEFAULT ''",
     'stickout_mm': 'REAL',
+}
+_ADDED_COLUMNS = {
+    **_HOLDER_COLUMNS,
+    'spindle_rpm': 'REAL',
+    'feed_mm_min': 'REAL',
 }
 
 
@@ -93,6 +109,8 @@ def _upgrade(conn: sqlite3.Connection) -> None:
     for name in missing:
         conn.execute(
             f'ALTER TABLE observations ADD COLUMN {name} {_ADDED_COLUMNS[name]}')
+    if not any(name in _HOLDER_COLUMNS for name in missing):
+        return
     for row in conn.execute('SELECT id, tool_json FROM observations').fetchall():
         held = assembly.describe(json.loads(row['tool_json']))
         conn.execute(
@@ -171,6 +189,8 @@ class Store:
         with closing(self._connect()) as conn, conn:
             conn.execute('DELETE FROM observations')
             conn.execute('DELETE FROM documents')
+            conn.execute('DELETE FROM merged_cutters')
+            conn.execute('DELETE FROM not_similar')
             conn.execute('DELETE FROM scan_items')
             conn.execute('DELETE FROM scan_job')
 
@@ -185,6 +205,56 @@ class Store:
             raise OSError(f'Backup is incomplete: {backup.name}')
         self.clear()
         return backup
+
+    # --- Cutters treated as the same -----------------------------------------
+    # The user's decisions only. The observations keep the cutter each was
+    # scanned as; similar.apply_merges combines them on the way to the tally.
+
+    def merged_cutters(self) -> dict[str, str]:
+        """Each merged cutter's key with the group it was put in."""
+        with closing(self._connect()) as conn:
+            return {row['cutter_key']: row['merge_group'] for row in conn.execute(
+                'SELECT cutter_key, merge_group FROM merged_cutters')}
+
+    def merge_cutters(self, cutter_keys: list[str]) -> None:
+        """Treat these cutters as one tool. Any group one of them is already
+        in joins too, so groups never overlap."""
+        keys = sorted(set(cutter_keys))
+        if len(keys) < 2:
+            return
+        marks = ', '.join('?' * len(keys))
+        with closing(self._connect()) as conn, conn:
+            joined = [row['merge_group'] for row in conn.execute(
+                f'SELECT DISTINCT merge_group FROM merged_cutters '
+                f'WHERE cutter_key IN ({marks})', keys)]
+            group = min(joined) if joined else keys[0]
+            for other in joined:
+                conn.execute('UPDATE merged_cutters SET merge_group = ? '
+                             'WHERE merge_group = ?', (group, other))
+            conn.executemany(
+                'INSERT INTO merged_cutters (cutter_key, merge_group) VALUES (?, ?) '
+                'ON CONFLICT(cutter_key) DO UPDATE SET merge_group = excluded.merge_group',
+                [(key, group) for key in keys])
+
+    def split_cutters(self, cutter_key: str) -> int:
+        """Undo the merge this cutter is part of. Returns how many cutters
+        were in it; 0 when it was not merged."""
+        with closing(self._connect()) as conn, conn:
+            return conn.execute(
+                'DELETE FROM merged_cutters WHERE merge_group = '
+                '(SELECT merge_group FROM merged_cutters WHERE cutter_key = ?)',
+                (cutter_key,)).rowcount
+
+    def not_similar(self) -> set[str]:
+        """The suggestions answered "not the same" (see similar.signature)."""
+        with closing(self._connect()) as conn:
+            return {row['signature'] for row in
+                    conn.execute('SELECT signature FROM not_similar')}
+
+    def mark_not_similar(self, signature: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute('INSERT OR IGNORE INTO not_similar (signature) VALUES (?)',
+                         (signature,))
 
     def merge_from(self, other: Path) -> dict[str, int]:
         """Add another data file's programs to this one.

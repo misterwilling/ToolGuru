@@ -5,6 +5,7 @@ import { onFusionPush, sendToFusion } from './api/fusionBridge'
 import { CutterDetail } from './components/CutterDetail'
 import { DatabasesPanel } from './components/DatabasesPanel'
 import { ScanPanel } from './components/ScanPanel'
+import { SimilarScreen } from './components/SimilarScreen'
 import { Stats } from './components/Stats'
 import { TallyTable } from './components/TallyTable'
 import type { AppState, CountBy, LengthUnit } from './types'
@@ -99,6 +100,13 @@ export function App() {
           onClick={() => run('browse_folder', { folderId: '' })}
         >
           Scan a folder…
+        </button>
+        <button
+          className={state.similar ? 'selected' : undefined}
+          disabled={busy || state.tally.length === 0}
+          onClick={() => run(state.similar ? 'close_similar' : 'open_similar')}
+        >
+          Similar…
         </button>
         <button
           className={state.databases ? 'selected' : undefined}
@@ -197,13 +205,17 @@ export function App() {
         </div>
       )}
 
-      {state.detail && (
+      {state.similar && (
+        <SimilarScreen similar={state.similar} display={state.displayUnit} disabled={locked} run={run} />
+      )}
+      {state.detail && !state.similar && (
         <CutterDetail
           detail={state.detail}
           display={state.displayUnit}
           picture={state.toolPictures?.[state.detail.tool_type]}
           busy={busy}
           onClose={() => run('close_cutter')}
+          onSplit={() => run('split_cutters', { cutterKey: state.detail?.cutter_key })}
         />
       )}
       {state.tally.length === 0 ? (
@@ -212,7 +224,7 @@ export function App() {
         </p>
       ) : (
         // Hidden, not removed, while a detail is open: the sort and filter are kept.
-        <div hidden={state.detail !== null}>
+        <div hidden={state.detail !== null || state.similar !== null}>
           <TallyTable
             rows={state.tally}
             countBy={state.countBy}

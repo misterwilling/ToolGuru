@@ -24,7 +24,7 @@ class TestAppState:
             'counts': EMPTY,
             'countBy': 'cutter', 'stickoutToleranceMm': 0.5,
             'displayUnit': 'in', 'descriptionWidthPx': 240, 'tally': [],
-            'detail': None, 'databases': None,
+            'detail': None, 'databases': None, 'similar': None,
             'lastScan': None, 'browser': None, 'confirmScan': None,
             'scan': None, 'notice': '', 'error': '',
         }
@@ -42,7 +42,7 @@ class TestActions:
             'counts': EMPTY,
             'countBy': 'cutter', 'stickoutToleranceMm': 0.5,
             'displayUnit': 'in', 'descriptionWidthPx': 240, 'tally': [],
-            'detail': None, 'databases': None,
+            'detail': None, 'databases': None, 'similar': None,
             'lastScan': None, 'browser': None, 'confirmScan': None,
             'scan': None, 'notice': '', 'error': '',
         }

@@ -157,3 +157,50 @@ class TestDocumentsThatCannotBeScanned(unittest.TestCase):
             extract.document_record(self.doc)
         self.assertEqual(str(raised.exception),
                          'Save this document to your hub before scanning it.')
+
+
+class TestReadSpeeds(unittest.TestCase):
+    """Speeds and feeds as numbers: a typed speed and feed on one end mill
+    operation, formulas on another, nothing set on a third, and a plunge feed
+    on a drilling operation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc, cls.cam, setup = helpers.create_cam_document()
+        typed = helpers.add_operation(setup, 'face', helpers.END_MILL).parameters
+        formula = helpers.add_operation(setup, 'contour2d', helpers.END_MILL).parameters
+        helpers.add_operation(setup, 'contour2d', helpers.END_MILL)
+        drill = helpers.add_operation(setup, 'drill', helpers.DRILL).parameters
+        typed.itemByName('tool_spindleSpeed').expression = '8000 rpm'
+        typed.itemByName('tool_feedCutting').expression = '40 in/min'
+        formula.itemByName('tool_spindleSpeed').expression = '2 * 3000 rpm'
+        formula.itemByName('tool_feedCutting').expression = 'tool_spindleSpeed * 0.1 mm'
+        drill.itemByName('tool_spindleSpeed').expression = '1500 rpm'
+        drill.itemByName('tool_feedPlunge').expression = '5 in/min'
+        cls.typed, cls.formula, cls.unset, cls.drill = extract.read_observations(
+            cls.cam, 'test-file')
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, 'doc'):
+            helpers.close_document(cls.doc)
+
+    def test_a_typed_speed_and_feed_are_read_in_rpm_and_mm_per_minute(self):
+        self.assertEqual(self.typed.spindle_speed, '8000 rpm')
+        self.assertEqual(self.typed.spindle_rpm, 8000.0)
+        self.assertEqual(self.typed.feed_mm_min, 1016.0)   # 40 in/min
+
+    def test_a_formula_is_read_as_the_number_it_works_out_to(self):
+        self.assertEqual(self.formula.spindle_speed, '2 * 3000 rpm')
+        self.assertEqual(self.formula.spindle_rpm, 6000.0)
+        self.assertEqual(self.formula.feed_mm_min, 600.0)
+
+    def test_a_speed_and_feed_never_set_are_read_as_nothing(self):
+        self.assertIsNone(self.unset.spindle_rpm)
+        self.assertIsNone(self.unset.feed_mm_min)
+
+    def test_a_drill_is_read_at_its_plunge_feed(self):
+        self.assertEqual(self.drill.strategy, 'drill')
+        self.assertEqual(self.drill.spindle_rpm, 1500.0)
+        self.assertEqual(self.drill.feed, '5 in/min')
+        self.assertEqual(self.drill.feed_mm_min, 127.0)

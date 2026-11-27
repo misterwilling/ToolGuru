@@ -7,10 +7,14 @@ import type {
   Counts,
   CutterFields,
   DetailAssembly,
+  DetailPreset,
   LengthUnit,
   SavedDatabase,
+  SimilarGroup,
+  SimilarMember,
   ScanJob,
   SortKey,
+  Speeds,
   SortState,
   TallyRow,
 } from './types'
@@ -247,6 +251,157 @@ export function cutterFieldRows(fields: CutterFields, units: string[], display: 
     else rows.push({ label, value: String(value), other: '' })
   }
   return rows
+}
+
+/** One line of a cutter's speeds and feeds. `mostUsed` is '' when there is none. */
+export interface SpeedRow {
+  label: string
+  range: string
+  mostUsed: string
+}
+
+function feedInUnit(mmPerMin: number, display: LengthUnit): string {
+  return display === 'in'
+    ? (mmPerMin / MM_PER_INCH).toFixed(1)
+    : Math.round(mmPerMin).toLocaleString('en-US')
+}
+
+/**
+ * The spindle speeds and feeds a cutter ran at: the range, and the value most
+ * operations used. Feeds are shown per minute in the chosen unit. A line is
+ * left out when no operation has a number for it.
+ */
+export function speedRows(speeds: Speeds, display: LengthUnit): SpeedRow[] {
+  const rows: SpeedRow[] = []
+  const add = (label: string, spread: Speeds['spindle_rpm'], unit: string, text: (value: number) => string) => {
+    if (spread === null) return
+    const range = spread.min === spread.max ? text(spread.min) : `${text(spread.min)}–${text(spread.max)}`
+    rows.push({
+      label,
+      range: `${range} ${unit}`,
+      mostUsed: spread.most_used === null ? '' : `${text(spread.most_used)} ${unit}`,
+    })
+  }
+  add('Spindle speed', speeds.spindle_rpm, 'rpm', (rpm) => Math.round(rpm).toLocaleString('en-US'))
+  add('Feed', speeds.feed_mm_min, `${display}/min`, (feed) => feedInUnit(feed, display))
+  return rows
+}
+
+/** What to say about operations that have no speed or feed number; '' when all have. */
+export function speedsNote(speeds: Speeds): string {
+  const without = speeds.operations_without
+  if (without === 0) return ''
+  if (speeds.spindle_rpm === null && speeds.feed_mm_min === null) {
+    return 'None recorded. Scan the programs again to read them.'
+  }
+  return `${plural(without, 'operation')} ${without === 1 ? 'has' : 'have'} none recorded.`
+}
+
+/** A similar group in a line: "flat end mill · 3 cutters · 148 operations". */
+export function groupSummary(group: SimilarGroup): string {
+  const operations = group.members.reduce((sum, member) => sum + member.operations, 0)
+  return `${group.tool_type} · ${plural(group.members.length, 'cutter')} · ${plural(operations, 'operation')}`
+}
+
+function fieldRow(key: string): (typeof FIELD_ROWS)[number] | undefined {
+  return FIELD_ROWS.find((row) => row.key === key)
+}
+
+/** Headings for the fields a group differs in; a length names the unit it is shown in. */
+export function variantHeadings(differs: string[], display: LengthUnit): string[] {
+  return differs.map((key) => {
+    const row = fieldRow(key)
+    if (row === undefined) return key
+    return row.kind === 'length' ? unitHeading(row.label, display) : row.label
+  })
+}
+
+export interface VariantCell {
+  text: string
+  differs: boolean // not the same as the most used cutter's
+}
+
+/**
+ * One cutter's values for the fields its group differs in, each marked when
+ * it is not what the most used cutter (`first`) has. A field the cutter was
+ * entered without reads "blank".
+ */
+export function variantCells(
+  member: SimilarMember,
+  first: SimilarMember,
+  differs: string[],
+  display: LengthUnit,
+): VariantCell[] {
+  return differs.map((key) => {
+    const value = member.fields[key]
+    const kind = fieldRow(key)?.kind
+    let text = 'blank'
+    if (typeof value === 'number') {
+      text = kind === 'length' ? inUnit(value, display) : kind === 'angle' ? `${Number(value.toFixed(3))}°` : String(value)
+    } else if (typeof value === 'string' && value !== '') {
+      text = value
+    }
+    return { text, differs: value !== first.fields[key] }
+  })
+}
+
+const M_PER_FOOT = 0.3048
+const NO_VALUE = '—'
+
+/** The headings of the cutting-data numbers, naming the unit each is shown in. */
+export function presetHeadings(display: LengthUnit): string[] {
+  return [
+    'rpm',
+    `Feed(${display}/min)`,
+    display === 'in' ? 'SFM' : 'm/min',
+    unitHeading('Chip load', display),
+    `Plunge(${display}/min)`,
+    `Ramp(${display}/min)`,
+    'Ramp rpm',
+    unitHeading('Stepover', display),
+    unitHeading('Stepdown', display),
+  ]
+}
+
+/**
+ * One preset's numbers as text, in the order of `presetHeadings`. Surface
+ * speed is in feet or metres per minute; chip load has one more decimal
+ * place than other lengths, since it is that much smaller.
+ */
+export function presetValues(preset: DetailPreset, display: LengthUnit): string[] {
+  const inch = display === 'in'
+  const show = (value: number | null, text: (value: number) => string): string =>
+    value === null ? NO_VALUE : text(value)
+  const whole = (value: number): string => Math.round(value).toLocaleString('en-US')
+  const feed = (value: number): string => feedInUnit(value, display)
+  const length = (value: number): string => inUnit(value, display)
+  return [
+    show(preset.spindle_rpm, whole),
+    show(preset.feed_mm_min, feed),
+    show(preset.surface_m_min, (value) => whole(inch ? value / M_PER_FOOT : value)),
+    show(preset.chip_load_mm, (value) => (inch ? (value / MM_PER_INCH).toFixed(4) : value.toFixed(3))),
+    show(preset.plunge_mm_min, feed),
+    show(preset.ramp_mm_min, feed),
+    show(preset.ramp_rpm, whole),
+    show(preset.stepover_mm, length),
+    show(preset.stepdown_mm, length),
+  ]
+}
+
+/** What tells two lines of the list apart: the name and every number. */
+export function presetKey(preset: DetailPreset): string {
+  return [
+    preset.name,
+    preset.spindle_rpm,
+    preset.feed_mm_min,
+    preset.chip_load_mm,
+    preset.surface_m_min,
+    preset.plunge_mm_min,
+    preset.ramp_mm_min,
+    preset.ramp_rpm,
+    preset.stepover_mm,
+    preset.stepdown_mm,
+  ].join('|')
 }
 
 /** "flat end mill · carbide". A material Fusion left unspecified is not shown. */

@@ -79,6 +79,8 @@ def read_observations(cam: adsk.cam.CAM, file_id: str) -> list[ObservationRecord
             if tool is None:
                 continue
             preset = operation.toolPreset
+            spindle = operation.parameters.itemByName('tool_spindleSpeed')
+            feed = _feed_parameter(operation)
             record = build_observation(
                 file_id=file_id,
                 setup_name=setup.name,
@@ -86,8 +88,10 @@ def read_observations(cam: adsk.cam.CAM, file_id: str) -> list[ObservationRecord
                 operation_name=operation.name,
                 strategy=operation.strategy,
                 tool_json=tool.toJson(),
-                spindle_speed=_expression(operation, 'tool_spindleSpeed'),
-                feed=_expression(operation, 'tool_feedCutting'),
+                spindle_speed=spindle.expression if spindle else '',
+                feed=feed.expression if feed else '',
+                spindle_rpm=_number(spindle),
+                feed_mm_min=_number(feed),
                 preset=preset.name if preset else '',
                 cutting_time_s=_cutting_time(cam, operation),
             )
@@ -108,9 +112,24 @@ def _machine_name(setup: adsk.cam.Setup) -> str:
     return ' '.join(part for part in (machine.vendor, machine.model) if part)
 
 
-def _expression(operation: adsk.cam.Operation, name: str) -> str:
-    parameter = operation.parameters.itemByName(name)
-    return parameter.expression if parameter else ''
+def _feed_parameter(operation: adsk.cam.Operation) -> adsk.cam.CAMParameter | None:
+    """The feed the operation cuts at. Drilling has no cutting feed: Fusion
+    greys it out and the plunge feed is the one that applies."""
+    cutting = operation.parameters.itemByName('tool_feedCutting')
+    if cutting is not None and not cutting.isEnabled:
+        plunge = operation.parameters.itemByName('tool_feedPlunge')
+        if plunge is not None:
+            return plunge
+    return cutting
+
+
+def _number(parameter: adsk.cam.CAMParameter | None) -> float | None:
+    """What Fusion works a speed or feed out to, whether it was typed as a
+    number or as a formula: rpm for a spindle speed, mm/min for a feed."""
+    if parameter is None:
+        return None
+    value = adsk.cam.FloatParameterValue.cast(parameter.value)
+    return value.value if value else None
 
 
 def _cutting_time(cam: adsk.cam.CAM, operation: adsk.cam.Operation) -> float | None:

@@ -207,6 +207,28 @@ def _handle_reset_data(data: dict) -> None:
     actions.reset_data(state, str(data.get('confirm', '')), stamp)
 
 
+# --- Similar cutters ------------------------------------------------------------
+
+def _handle_open_similar(data: dict) -> None:
+    actions.open_similar(state)
+
+
+def _handle_close_similar(data: dict) -> None:
+    actions.close_similar(state)
+
+
+def _handle_merge_cutters(data: dict) -> None:
+    actions.merge_cutters(state, data.get('cutterKeys'))
+
+
+def _handle_split_cutters(data: dict) -> None:
+    actions.split_cutters(state, str(data.get('cutterKey', '')))
+
+
+def _handle_not_similar(data: dict) -> None:
+    actions.not_similar(state, str(data.get('signature', '')))
+
+
 # --- Saved databases ------------------------------------------------------------
 
 def _handle_open_databases(data: dict) -> None:
@@ -316,6 +338,11 @@ _handlers: dict = {
     'close_cutter': _handle_close_cutter,
     'scan_active': _handle_scan_active,
     'reset_data': _handle_reset_data,
+    'open_similar': _handle_open_similar,
+    'close_similar': _handle_close_similar,
+    'merge_cutters': _handle_merge_cutters,
+    'split_cutters': _handle_split_cutters,
+    'not_similar': _handle_not_similar,
     'open_databases': _handle_open_databases,
     'close_databases': _handle_close_databases,
     'save_database': _handle_save_database,

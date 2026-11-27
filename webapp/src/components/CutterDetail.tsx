@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { CutterDetail as Detail, LengthUnit } from '../types'
+import { VariantTable } from './SimilarScreen'
 import {
   assemblyLabel,
   cutterFieldRows,
@@ -7,6 +8,11 @@ import {
   formatDate,
   formatDuration,
   formatStickout,
+  presetHeadings,
+  presetKey,
+  presetValues,
+  speedRows,
+  speedsNote,
 } from '../utils'
 
 interface Props {
@@ -16,6 +22,8 @@ interface Props {
   picture?: string
   busy: boolean
   onClose: () => void
+  /** Count the cutters this line was merged from apart again. */
+  onSplit: () => void
 }
 
 function Tile({ label, children }: { label: string; children: ReactNode }) {
@@ -72,9 +80,11 @@ function Value({ usual, children }: { usual: boolean; children: ReactNode }) {
 const NONE = <span className="muted">—</span>
 
 /** One cutter: its figures, its geometry, its usual setup, and every program compared against that. */
-export function CutterDetail({ detail, display, picture, busy, onClose }: Props) {
+export function CutterDetail({ detail, display, picture, busy, onClose, onSplit }: Props) {
   const geometry = cutterFieldRows(detail.fields, detail.units, display)
   const otherUnits = geometry.some((row) => row.other !== '')
+  const speeds = speedRows(detail.speeds, display)
+  const speedNote = speedsNote(detail.speeds)
   return (
     <section className="detail">
       <div className="actions">
@@ -116,6 +126,29 @@ export function CutterDetail({ detail, display, picture, busy, onClose }: Props)
               ))}
             </tbody>
           </table>
+
+          <h3 className="after">Speeds and feeds</h3>
+          {speeds.length > 0 && (
+            <table className="plain">
+              <thead>
+                <tr>
+                  <th />
+                  <th className="num">Range</th>
+                  <th className="num">Most used</th>
+                </tr>
+              </thead>
+              <tbody>
+                {speeds.map((row) => (
+                  <tr key={row.label}>
+                    <td>{row.label}</td>
+                    <td className="num">{row.range}</td>
+                    <td className="num">{row.mostUsed || NONE}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {speedNote && <p className="muted small">{speedNote}</p>}
         </div>
         <div>
           <h3>
@@ -156,6 +189,67 @@ export function CutterDetail({ detail, display, picture, busy, onClose }: Props)
         </div>
       </div>
 
+      {detail.variants && (
+        <>
+          <h3>
+            Merged from{' '}
+            <span className="note">
+              — similar cutters you chose to treat as the same. The first is the most used and names this line.
+            </span>{' '}
+            <button className="link" disabled={busy} onClick={onSplit}>Split</button>
+          </h3>
+          <div className="after">
+            <VariantTable differs={detail.variants.differs} members={detail.variants.members} display={display} />
+          </div>
+        </>
+      )}
+
+      <h3>
+        Cutting data{' '}
+        <span className="note">
+          — the presets operations picked. Changed counts the operations run at a different speed or feed.
+        </span>
+      </h3>
+      {detail.presets.length === 0 ? (
+        <p className="muted">None recorded.</p>
+      ) : (
+        <div className="scroll after">
+          <table className="plain">
+            <thead>
+              <tr>
+                <th>Preset</th>
+                <th className="num" title="Programs that picked it">PGMs</th>
+                <th className="num" title="Operations that picked it">OPs</th>
+                <th className="num">Changed</th>
+                {presetHeadings(display).map((heading) => (
+                  <th key={heading} className="num">{heading}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {detail.presets.map((preset) => (
+                <tr key={presetKey(preset)}>
+                  <td>{preset.name}</td>
+                  <td className="num">{preset.programs}</td>
+                  <td className="num">{preset.operations}</td>
+                  <td className="num">
+                    {preset.changed > 0 ? <span className="differs">{preset.changed}</span> : 0}
+                    {preset.unchecked > 0 && (
+                      <small className="muted" title="Their speed or feed is a formula; scan the program again to check them">
+                        {' '}+{preset.unchecked} not checked
+                      </small>
+                    )}
+                  </td>
+                  {presetValues(preset, display).map((value, index) => (
+                    <td key={index} className="num">{value}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <h3>
         Programs <span className="note">— anything different from the usual setup is marked</span>
       </h3>
@@ -169,6 +263,7 @@ export function CutterDetail({ detail, display, picture, busy, onClose }: Props)
               <th>Holder</th>
               <th className="num">Stickout</th>
               <th>Machine</th>
+              <th title="Marked when an operation ran at a different speed or feed than the preset">Cutting data</th>
               <th className="num" title="Operations that used the tool">OPs</th>
               <th className="num">Cutting time</th>
             </tr>
@@ -210,6 +305,15 @@ export function CutterDetail({ detail, display, picture, busy, onClose }: Props)
                     : program.machines.map((machine) => (
                         <div key={machine.value}>
                           <Value usual={machine.usual}>{machine.value}</Value>
+                        </div>
+                      ))}
+                </td>
+                <td>
+                  {program.presets.length === 0
+                    ? NONE
+                    : program.presets.map((preset) => (
+                        <div key={preset.name}>
+                          <Value usual={!preset.changed}>{preset.name}</Value>
                         </div>
                       ))}
                 </td>

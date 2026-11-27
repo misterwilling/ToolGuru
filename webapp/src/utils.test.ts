@@ -9,8 +9,16 @@ import {
   diameterParts,
   draggedWidth,
   familiesIn,
+  groupSummary,
+  variantCells,
+  variantHeadings,
   findSaved,
+  presetHeadings,
+  presetKey,
+  presetValues,
   savedSummary,
+  speedRows,
+  speedsNote,
   familyChoice,
   filterTally,
   formatDate,
@@ -36,6 +44,7 @@ import type { TallyRow } from './types'
 function makeRow(overrides?: Partial<TallyRow>): TallyRow {
   return {
     cutter_key: 'aaaa',
+    merged: 1,
     tool_type: 'flat end mill',
     family: 'milling',
     description: '1/2 flat end mill',
@@ -599,5 +608,146 @@ describe('saved databases', () => {
 
   it('says so when a saved file cannot be read', () => {
     expect(savedSummary(saved[1])).toBe('Cannot be read')
+  })
+})
+
+describe('speeds and feeds', () => {
+  const spread = (min: number, max: number, most_used: number | null) => ({ min, max, most_used, operations: 4 })
+  const speeds = {
+    spindle_rpm: spread(6000, 12000, 8000),
+    feed_mm_min: spread(508, 1524, 1016),
+    operations_without: 0,
+  }
+
+  it('shows the feed in inches per minute to one place', () => {
+    expect(speedRows(speeds, 'in')).toEqual([
+      { label: 'Spindle speed', range: '6,000–12,000 rpm', mostUsed: '8,000 rpm' },
+      { label: 'Feed', range: '20.0–60.0 in/min', mostUsed: '40.0 in/min' },
+    ])
+  })
+
+  it('shows the feed in whole millimetres per minute', () => {
+    expect(speedRows(speeds, 'mm')[1]).toEqual({ label: 'Feed', range: '508–1,524 mm/min', mostUsed: '1,016 mm/min' })
+  })
+
+  it('shows one figure when every operation ran the same', () => {
+    expect(speedRows({ ...speeds, spindle_rpm: spread(8000, 8000, 8000) }, 'in')[0].range).toBe('8,000 rpm')
+  })
+
+  it('leaves most-used blank when the top values were level', () => {
+    expect(speedRows({ ...speeds, spindle_rpm: spread(8000, 9000, null) }, 'in')[0].mostUsed).toBe('')
+  })
+
+  it('leaves out a line that has no numbers', () => {
+    expect(speedRows({ ...speeds, feed_mm_min: null }, 'in').map((row) => row.label)).toEqual(['Spindle speed'])
+  })
+
+  it('says nothing when every operation has numbers', () => {
+    expect(speedsNote(speeds)).toBe('')
+  })
+
+  it('counts the operations that have none', () => {
+    expect(speedsNote({ ...speeds, operations_without: 3 })).toBe('3 operations have none recorded.')
+    expect(speedsNote({ ...speeds, operations_without: 1 })).toBe('1 operation has none recorded.')
+  })
+
+  it('asks for a rescan when nothing is recorded at all', () => {
+    expect(speedsNote({ spindle_rpm: null, feed_mm_min: null, operations_without: 5 })).toBe(
+      'None recorded. Scan the programs again to read them.',
+    )
+  })
+})
+
+describe('cutting data', () => {
+  const preset = {
+    name: 'Aluminum - Roughing',
+    spindle_rpm: 8000,
+    feed_mm_min: 1016,
+    chip_load_mm: 0.0508,
+    surface_m_min: 304.8,
+    plunge_mm_min: 254,
+    ramp_mm_min: 508,
+    ramp_rpm: 7000,
+    stepover_mm: 2.54,
+    stepdown_mm: null,
+    programs: 2,
+    operations: 3,
+    changed: 1,
+    unchecked: 0,
+  }
+
+  it('names the unit of each number in its heading', () => {
+    expect(presetHeadings('in')).toEqual([
+      'rpm', 'Feed(in/min)', 'SFM', 'Chip load(in)', 'Plunge(in/min)', 'Ramp(in/min)', 'Ramp rpm', 'Stepover(in)', 'Stepdown(in)',
+    ])
+    expect(presetHeadings('mm').slice(1, 3)).toEqual(['Feed(mm/min)', 'm/min'])
+    expect(presetHeadings('mm')[4]).toBe('Plunge(mm/min)')
+  })
+
+  it('shows surface speed in feet and chip load to four places in inches', () => {
+    expect(presetValues(preset, 'in')).toEqual(['8,000', '40.0', '1,000', '0.0020', '10.0', '20.0', '7,000', '0.100', '—'])
+  })
+
+  it('shows metres per minute and millimetres in metric', () => {
+    expect(presetValues(preset, 'mm')).toEqual(['8,000', '1,016', '305', '0.051', '254', '508', '7,000', '2.54', '—'])
+  })
+
+  it('gives the same name with different numbers a different key', () => {
+    expect(presetKey(preset)).not.toBe(presetKey({ ...preset, ramp_rpm: 6000 }))
+    expect(presetKey(preset)).toBe(presetKey({ ...preset, programs: 9, changed: 0 }))
+  })
+})
+
+describe('similar cutters', () => {
+  const member = (key: string, operations: number, fields: Record<string, number | string>) => ({
+    cutter_key: key,
+    description: key,
+    fields: { DC: 6.35, NOF: 4, ...fields },
+    programs: 1,
+    operations,
+    time_s: 0,
+  })
+  const first = member('a', 143, { LCF: 19.05, 'tip-diameter': 4.826, material: 'carbide' })
+  const shorter = member('b', 3, { LCF: 12.7, 'tip-diameter': 4.826, material: 'carbide' })
+  const blank = member('c', 2, { LCF: 19.05, material: 'unspecified' })
+  const differs = ['LCF', 'tip-diameter', 'material']
+
+  it('sums a group up in a line', () => {
+    expect(groupSummary({ tool_type: 'bull nose end mill', differs, members: [first, shorter, blank] })).toBe(
+      'bull nose end mill · 3 cutters · 148 operations',
+    )
+  })
+
+  it('names the unit in the heading of a length and not of a text field', () => {
+    expect(variantHeadings(differs, 'in')).toEqual(['Flute length(in)', 'Tip diameter(in)', 'Material'])
+    expect(variantHeadings(['LCF'], 'mm')).toEqual(['Flute length(mm)'])
+  })
+
+  it('marks nothing on the most used cutter', () => {
+    expect(variantCells(first, first, differs, 'in')).toEqual([
+      { text: '0.750', differs: false },
+      { text: '0.190', differs: false },
+      { text: 'carbide', differs: false },
+    ])
+  })
+
+  it('marks only the values that are not the most used cutter\'s', () => {
+    expect(variantCells(shorter, first, differs, 'in')).toEqual([
+      { text: '0.500', differs: true },
+      { text: '0.190', differs: false },
+      { text: 'carbide', differs: false },
+    ])
+  })
+
+  it('reads a field the cutter was entered without as blank', () => {
+    expect(variantCells(blank, first, differs, 'mm')).toEqual([
+      { text: '19.05', differs: false },
+      { text: 'blank', differs: true },
+      { text: 'unspecified', differs: true },
+    ])
+  })
+
+  it('shows a flute count as it is', () => {
+    expect(variantCells(first, first, ['NOF'], 'in')).toEqual([{ text: '4', differs: false }])
   })
 })

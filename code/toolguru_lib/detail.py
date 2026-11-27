@@ -13,7 +13,10 @@ Built from the same observation rows as the tally, so the two always agree.
 from __future__ import annotations
 
 import json
+from collections import Counter
 
+from toolguru_lib import presets as cutting_data
+from toolguru_lib import similar
 from toolguru_lib.tally import split_assemblies, summarize
 
 # Stickouts are stored to 0.001 mm; this keeps float noise out of the
@@ -76,15 +79,92 @@ def _marked(values: list, usual: dict | None) -> list[dict]:
             for value in values]
 
 
+def _spread(group: list[dict], field: str) -> dict | None:
+    """The lowest, highest and most often used value of a speed or feed, with
+    the number of operations that have one. None when none has. Where the
+    top two values were used equally often there is no most-used one."""
+    values = [row[field] for row in group if row.get(field) is not None]
+    if not values:
+        return None
+    ranked = Counter(values).most_common(2)
+    clear = len(ranked) == 1 or ranked[0][1] > ranked[1][1]
+    return {'min': min(values), 'max': max(values),
+            'most_used': ranked[0][0] if clear else None,
+            'operations': len(values)}
+
+
+def _speeds(group: list[dict]) -> dict:
+    """The spindle speeds (rpm) and feeds (mm/min) the cutter was run at.
+    Operations scanned before these were recorded, or with neither set, are
+    counted apart."""
+    return {
+        'spindle_rpm': _spread(group, 'spindle_rpm'),
+        'feed_mm_min': _spread(group, 'feed_mm_min'),
+        'operations_without': sum(
+            1 for row in group
+            if row.get('spindle_rpm') is None and row.get('feed_mm_min') is None),
+    }
+
+
+def _read_presets(group: list[dict]) -> list[tuple[dict, bool | None] | None]:
+    """For each row, the preset its operation picked: its numbers, and
+    whether the operation kept to them (None when that cannot be checked).
+    None for a row whose preset is not with its tool."""
+    read = []
+    for row in group:
+        tool = json.loads(row['tool_json'])
+        preset = cutting_data.find_preset(tool, row['preset'])
+        if preset is None:
+            read.append(None)
+            continue
+        values = cutting_data.preset_values(preset, row['unit'])
+        read.append((values, cutting_data.kept_to_preset(row, values)))
+    return read
+
+
+def _presets(group: list[dict], read: list) -> list[dict]:
+    """The cutting data in use: one entry per preset that an operation
+    picked, most used first. A preset of the same name with different
+    numbers is a different entry. Presets no operation picked are left out.
+
+    `changed` counts the operations that ran at a different speed or feed
+    than the preset, `unchecked` those where that cannot be told.
+    """
+    entries: dict[tuple, dict] = {}
+    for row, found in zip(group, read):
+        if found is None:
+            continue
+        values, kept = found
+        key = (row['preset'], *values.values())
+        entry = entries.setdefault(key, {
+            'name': row['preset'], **values, 'files': set(), 'operations': 0, 'changed': 0,
+            'unchecked': 0})
+        entry['files'].add(row['file_id'])
+        entry['operations'] += 1
+        entry['changed'] += kept is False
+        entry['unchecked'] += kept is None
+    listed = []
+    for key, entry in entries.items():
+        entry['programs'] = len(entry.pop('files'))
+        listed.append((key, entry))
+    listed.sort(key=lambda item: (*_most_used_first(item[1]),
+                                  tuple(str(part) for part in item[0])))
+    return [entry for _, entry in listed]
+
+
 def _programs(group: list[dict], assemblies: list[tuple[dict, str, list[dict]]],
               usual_number: dict | None, usual_machine: dict | None,
-              usual_assembly: dict | None, tolerance_mm: float) -> list[dict]:
+              usual_assembly: dict | None, tolerance_mm: float,
+              read: list) -> list[dict]:
     """One entry per program that used the cutter, latest saved first, with
     everything that differs from the usual setup marked `usual: False`.
 
     A program that used the cutter more than one way lists each: every tool
-    number and machine, and one `setups` line per assembly.
+    number and machine, and one `setups` line per assembly. `presets` names
+    the cutting data the program picked, each marked `changed` when one of
+    its operations ran at a different speed or feed.
     """
+    kept_by_row = {id(row): found for row, found in zip(group, read)}
     usual_holder = next((holder_key for assembly, holder_key, _ in assemblies
                          if assembly is usual_assembly), None)
     by_file: dict[str, list[dict]] = {}
@@ -127,9 +207,20 @@ def _programs(group: list[dict], assemblies: list[tuple[dict, str, list[dict]]],
                 sorted({row['machine'] for row in rows if row['machine']}),
                 usual_machine),
             'setups': setups,
+            'presets': _program_presets(rows, kept_by_row),
         })
     programs.sort(key=lambda p: (-p['last_saved'], p['name'], p['file_id']))
     return programs
+
+
+def _program_presets(rows: list[dict], kept_by_row: dict) -> list[dict]:
+    changed: dict[str, bool] = {}
+    for row in rows:
+        found = kept_by_row[id(row)]
+        if found is None:
+            continue
+        changed[row['preset']] = changed.get(row['preset'], False) or found[1] is False
+    return [{'name': name, 'changed': changed[name]} for name in sorted(changed)]
 
 
 def build_cutter_detail(rows: list[dict], cutter_key: str,
@@ -138,7 +229,7 @@ def build_cutter_detail(rows: list[dict], cutter_key: str,
     when no observation has this cutter.
 
     The result carries the cutter's tally figures, its full geometry in
-    millimetres, how widely each tool number, assembly and machine was used,
+    millimetres, the speeds and feeds it ran at, how widely each tool number, assembly and machine was used,
     which of each is the usual one (None when the top two are level), and
     the programs compared against that usual setup. `tolerance_mm` is the
     stickout tolerance that groups the assemblies.
@@ -152,9 +243,13 @@ def build_cutter_detail(rows: list[dict], cutter_key: str,
     machines = _breakdown(group, 'machine')
     usual_number, usual_machine = _usual(numbers), _usual(machines)
     usual_assembly = _usual([assembly for assembly, _, _ in assemblies])
+    read = _read_presets(group)
     return {
         **summarize(group),
         'fields': json.loads(group[0]['cutter_fields']),
+        'variants': similar.variants(group),
+        'speeds': _speeds(group),
+        'presets': _presets(group, read),
         'tool_number_use': numbers,
         'machine_use': machines,
         'assemblies': [{field: assembly[field] for field in _ASSEMBLY_FIELDS}
@@ -167,5 +262,5 @@ def build_cutter_detail(rows: list[dict], cutter_key: str,
         },
         'program_list': _programs(
             group, assemblies, usual_number, usual_machine, usual_assembly,
-            tolerance_mm),
+            tolerance_mm, read),
     }

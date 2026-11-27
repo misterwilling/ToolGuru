@@ -47,18 +47,30 @@ class ObservationRecord:
     holder_product_id: str    # normalized; see assembly.describe
     holder_shape: str
     stickout_mm: float | None
-    spindle_speed: str
+    spindle_speed: str        # as typed in the program: a number or a formula
     feed: str
+    spindle_rpm: float | None   # what Fusion worked it out to; None when not set
+    feed_mm_min: float | None
     preset: str
     cutting_time_s: float | None
     cutter_fields: str  # JSON of the normalized cutter geometry
     tool_json: str      # raw Tool.toJson(), kept so rules can change later
 
 
+def _set_number(value: float | None) -> float | None:
+    """A speed or feed as stored. Zero is what Fusion holds for one that was
+    never set, so it is stored as nothing rather than as a speed of zero."""
+    if value is None or value <= 0:
+        return None
+    return round(value, 3)
+
+
 def build_observation(*, file_id: str, setup_name: str, machine: str,
                       operation_name: str, strategy: str, tool_json: str,
                       spindle_speed: str, feed: str, preset: str,
-                      cutting_time_s: float | None) -> ObservationRecord | None:
+                      cutting_time_s: float | None,
+                      spindle_rpm: float | None = None,
+                      feed_mm_min: float | None = None) -> ObservationRecord | None:
     """Turn what was read from one operation into a record.
 
     Returns None when the tool's type is out of scope (see cutter.family_of).
@@ -87,6 +99,8 @@ def build_observation(*, file_id: str, setup_name: str, machine: str,
         stickout_mm=held.stickout_mm,
         spindle_speed=spindle_speed,
         feed=feed,
+        spindle_rpm=_set_number(spindle_rpm),
+        feed_mm_min=_set_number(feed_mm_min),
         preset=preset,
         cutting_time_s=cutting_time_s,
         cutter_fields=json.dumps(identity.fields, sort_keys=True),

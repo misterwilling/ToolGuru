@@ -46,6 +46,10 @@ def summarize(group: list[dict]) -> dict:
                                 if r['tool_number'] is not None}),
         'machines': sorted({r['machine'] for r in group if r['machine']}),
         'units': sorted({r['unit'] for r in group if r['unit']}),
+        # How many scanned cutters this line stands for: more than one when
+        # the user has had similar cutters treated as the same.
+        'merged': len({r.get('original_cutter_key', r['cutter_key'])
+                       for r in group}),
     }
 
 
