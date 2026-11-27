@@ -58,12 +58,15 @@ def make_document(file_id: str = 'file-1', *, date_created: int = 1_700_000_000,
 
 def make_observation(file_id: str = 'file-1', *, tool: dict | None = None,
                      machine: str = 'Example Mill', operation_name: str = 'Op',
-                     cutting_time_s: float | None = 60.0) -> ObservationRecord:
+                     cutting_time_s: float | None = 60.0,
+                     spindle_rpm: float | None = 8000.0,
+                     feed_mm_min: float | None = 1016.0) -> ObservationRecord:
     record = build_observation(
         file_id=file_id, setup_name='Setup1', machine=machine,
         operation_name=operation_name, strategy='adaptive',
         tool_json=json.dumps(tool or make_tool()),
         spindle_speed='8000', feed='40 in/min', preset='Aluminum',
-        cutting_time_s=cutting_time_s)
+        cutting_time_s=cutting_time_s,
+        spindle_rpm=spindle_rpm, feed_mm_min=feed_mm_min)
     assert record is not None
     return record

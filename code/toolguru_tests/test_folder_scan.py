@@ -10,7 +10,7 @@ from toolguru_commands.commandPalette import actions
 from toolguru_commands.commandPalette.state import AppState
 from toolguru_lib import store as scan_store
 from toolguru_lib.records import FileRef, ScanError
-from toolguru_lib.store import Store, dataset_path
+from toolguru_lib.store import Store, data_path
 from toolguru_tests.factories import make_document, make_observation, make_tool
 
 FILES = [FileRef('a', 'Program a'), FileRef('b', 'Program b'),
@@ -80,14 +80,6 @@ class TestCountThenConfirm:
             'folder': 'Project / Folder', 'total': 3, 'pending': 3,
             'scanned': 0, 'skipped': 0, 'failed': 0, 'problems': [],
             'running': True}
-
-    def test_the_scan_goes_to_the_dataset_that_was_active(self, tmp_path):
-        state = AppState()
-        actions.set_dataset(state, 'main')
-        actions.propose_scan(state, 'Folder', FILES)
-        actions.start_scan(state, tmp_path)
-        assert Store(dataset_path('main', tmp_path)).job()['total'] == 3
-        assert Store(dataset_path('trial', tmp_path)).job() is None
 
     def test_browsing_elsewhere_drops_the_counted_folder(self, tmp_path):
         state = AppState()
@@ -195,14 +187,14 @@ class TestScanSteps:
 
     def test_a_step_does_nothing_when_the_scan_is_not_running(self, tmp_path):
         state = AppState()
-        Store(dataset_path('trial', tmp_path)).start_job('Folder', FILES)
+        Store(data_path(tmp_path)).start_job('Folder', FILES)
         scan_one = scans(a=[make_observation('a')])
         assert actions.scan_step(state, scan_one, tmp_path) is False
         assert scan_one.opened == []
 
 
 class TestRepeatability:
-    """The trial acceptance gate, on made-up programs."""
+    """The same folder gives the same tally however often it is scanned."""
 
     def _scan_folder(self, state, tmp_path):
         actions.propose_scan(state, 'Folder', FILES)
@@ -220,10 +212,10 @@ class TestRepeatability:
         assert first[0] == {'documents': 3, 'observations': 4, 'cutters': 2}
         assert self._scan_folder(state, tmp_path) == first
 
-    def test_clear_then_rescan_gives_the_identical_tally(self, tmp_path):
+    def test_reset_then_rescan_gives_the_identical_tally(self, tmp_path):
         state = AppState()
         first = self._scan_folder(state, tmp_path)
-        actions.clear_trial(state, tmp_path)
+        actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
         assert actions.view(state, tmp_path)['scan'] is None
         assert self._scan_folder(state, tmp_path) == first
 
@@ -256,7 +248,7 @@ class TestPauseAndResume:
         assert scan_one.opened == ['a', 'b', 'c']
         assert actions.view(state, tmp_path)['scan']['scanned'] == 3
 
-    def test_a_restarted_add_in_can_resume_from_the_dataset_file(self, tmp_path):
+    def test_a_restarted_add_in_can_resume_from_the_data_file(self, tmp_path):
         first = started(tmp_path)
         scan_one = scans(a=[make_observation('a')], b=[make_observation('b')],
                          c=[make_observation('c')])
@@ -271,8 +263,8 @@ class TestPauseAndResume:
         assert scan_one.opened == ['a', 'b', 'c']
 
     def test_resume_does_not_reopen_the_program_fusion_died_on(self, tmp_path):
-        Store(dataset_path('trial', tmp_path)).start_job('Folder', FILES)
-        Store(dataset_path('trial', tmp_path)).mark_item(0, scan_store.OPENING)
+        Store(data_path(tmp_path)).start_job('Folder', FILES)
+        Store(data_path(tmp_path)).mark_item(0, scan_store.OPENING)
         scan_one = scans(b=[make_observation('b')], c=[make_observation('c')])
         state = AppState()
 
@@ -312,27 +304,24 @@ class TestPauseAndResume:
 
 class TestNothingElseChangesDuringAScan:
     @pytest.mark.parametrize('action', [
-        lambda s, d: actions.set_dataset(s, 'main'),
-        lambda s, d: actions.clear_trial(s, d),
-        lambda s, d: actions.reset_main(s, 'RESET', '20260101-120000', d),
+        lambda s, d: actions.reset_data(s, 'RESET', '20260101-120000', d),
         lambda s, d: actions.dismiss_scan(s, d),
         lambda s, d: actions.propose_scan(s, 'Other', FILES[:1]),
         lambda s, d: actions.start_scan(s, d),
     ])
     def test_action_is_refused_while_scanning(self, tmp_path, action):
         state = started(tmp_path)
-        Store(dataset_path('trial', tmp_path)).replace_document(
+        Store(data_path(tmp_path)).replace_document(
             make_document('z'), [make_observation('z')])
 
         action(state, tmp_path)
 
         assert state.error == 'Stop the folder scan first.'
-        assert state.dataset == 'trial'
         assert state.scan_running is True
-        store = Store(dataset_path('trial', tmp_path))
+        store = Store(data_path(tmp_path))
         assert store.counts()['documents'] == 1
         assert store.job()['folder'] == 'Project / Folder'
-        assert not (tmp_path / 'main-backup-20260101-120000.sqlite').exists()
+        assert not (tmp_path / 'toolguru-backup-20260101-120000.sqlite').exists()
 
     def test_refuse_while_scanning_is_quiet_when_idle(self):
         state = AppState()
@@ -360,13 +349,13 @@ class TestClicksWhileAProgramIsOpen:
         state = started(tmp_path)
         seen = {}
 
-        def click_stop_then_clear():
+        def click_stop_then_reset():
             actions.stop_scan(state)
-            actions.clear_trial(state, tmp_path)
+            actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
             seen['error'] = state.error
-            seen['job'] = Store(dataset_path('trial', tmp_path)).job()
+            seen['job'] = Store(data_path(tmp_path)).job()
 
-        actions.scan_step(state, self._scan_one(click_stop_then_clear), tmp_path)
+        actions.scan_step(state, self._scan_one(click_stop_then_reset), tmp_path)
 
         assert seen['error'] == 'Stop the folder scan first.'
         assert seen['job']['total'] == 3

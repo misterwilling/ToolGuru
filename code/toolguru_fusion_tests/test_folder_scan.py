@@ -88,7 +88,7 @@ class TestHubBrowse(unittest.TestCase):
 
 
 class TestScanSteps(unittest.TestCase):
-    """The scan loop's step, reading a real document into a real dataset
+    """The scan loop's step, reading a real document into a real data
     file: one program with two tools, then a design with nothing to scan."""
 
     @classmethod

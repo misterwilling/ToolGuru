@@ -1,12 +1,112 @@
+/* ToolGuru's look: Verdana and a violet accent on slate.
+
+   Verdana was drawn for reading on a screen at small sizes: wide, open
+   letters and figures that are hard to mistake for one another. It ships
+   with Windows and macOS, so nothing is downloaded and nothing is bundled.
+
+   Every colour is a variable, set once per theme. Fusion's own setting picks
+   the theme (App.tsx puts it on <html data-theme>); until Fusion has
+   answered, the device's setting is used. `color-scheme` makes the browser's
+   own parts — inputs, drop-downs, scrollbars — follow the same theme. */
+:root {
+  --font: Verdana, Geneva, 'DejaVu Sans', sans-serif;
+  color-scheme: light;
+  --bg: #ffffff;
+  --text: #1e1f26;
+  --muted: #61636f;
+  --border: #adb0bd;
+  --line: #e3e4ea;
+  --surface: #f6f6fa;
+  --surface-border: #d0d2dc;
+  --control-bg: #eff0f5;
+  --field-bg: #ffffff;
+  --header-bg: #ffffff;
+  --stripe: #f7f7fb;
+  --row-hover: #eceafb;
+  --accent: #5b4bd6;
+  --accent-text: #ffffff;
+  --link: #5b4bd6;
+  --confirm-bg: #fff7e0;
+  --confirm-border: #d9a441;
+  --error-bg: #fde8e8;
+  --error-border: #e5a3a3;
+  --error-text: #aa1111;
+  --notice-bg: #eeecfb;
+  --notice-border: #c3bdf0;
+  --track: #e3e4ea;
+  --picture-bg: #ffffff;
+  --mark-text: #7a4f00;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #272c36;
+  --text: #e8ebee;
+  --muted: #9ea9b5;
+  --border: #586273;
+  --line: #3b4350;
+  --surface: #2f3541;
+  --surface-border: #485160;
+  --control-bg: #39414f;
+  --field-bg: #1f232c;
+  --header-bg: #272c36;
+  --stripe: #2b313c;
+  --row-hover: #383a55;
+  --accent: #a99bff;
+  --accent-text: #150f3d;
+  --link: #c0b6ff;
+  --confirm-bg: #453a1c;
+  --confirm-border: #9a7a2a;
+  --error-bg: #4a262b;
+  --error-border: #8f4a52;
+  --error-text: #ff9a9a;
+  --notice-bg: #2d2c4a;
+  --notice-border: #5b55a0;
+  --track: #3b4350;
+  --picture-bg: #ffffff;
+  --mark-text: #f0c36a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #272c36;
+    --text: #e8ebee;
+    --muted: #9ea9b5;
+    --border: #586273;
+    --line: #3b4350;
+    --surface: #2f3541;
+    --surface-border: #485160;
+    --control-bg: #39414f;
+    --field-bg: #1f232c;
+    --header-bg: #272c36;
+    --stripe: #2b313c;
+    --row-hover: #383a55;
+    --accent: #a99bff;
+    --accent-text: #150f3d;
+    --link: #c0b6ff;
+    --confirm-bg: #453a1c;
+    --confirm-border: #9a7a2a;
+    --error-bg: #4a262b;
+    --error-border: #8f4a52;
+    --error-text: #ff9a9a;
+    --notice-bg: #2d2c4a;
+    --notice-border: #5b55a0;
+    --track: #3b4350;
+    --mark-text: #f0c36a;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
 }
+html { background: var(--bg); }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  color: #222;
-  background: #fff;
+  font-family: var(--font);
+  font-size: 12.5px;
+  /* Figures of one width everywhere, so numbers line up in any column. */
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--text);
+  background: var(--bg);
 }
 .app {
   padding: 12px 14px;
@@ -15,40 +115,48 @@ header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
 }
+/* The add-in's icon, beside its name. */
+header .mark {
+  width: 36px;
+  height: 36px;
+}
+/* The wordmark: TOOL in the text colour, GURU in the accent. */
 h1 {
-  font-size: 17px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   margin: 0;
 }
-.badge {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 3px;
-  color: #fff;
-}
-.badge.trial { background: #b26a00; }
-.badge.main { background: #1f6f3f; }
-.muted { color: #666; }
+h1 span { color: var(--accent); }
+.muted { color: var(--muted); }
 button {
   font: inherit;
-  padding: 5px 10px;
-  border: 1px solid #b5b5b5;
-  border-radius: 3px;
-  background: #f3f3f3;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--control-bg);
+  color: var(--text);
   cursor: pointer;
 }
+button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: #0a66c2; border-color: #0a66c2; color: #fff; }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
 button.link {
   border: none;
   background: none;
-  color: #0a66c2;
+  color: var(--link);
   padding: 0;
-  margin-left: auto;
   text-decoration: underline;
 }
 .actions, .filters {
@@ -59,15 +167,36 @@ button.link {
   margin-bottom: 10px;
 }
 .segmented button { border-radius: 0; margin-left: -1px; }
-.segmented button:first-child { border-radius: 3px 0 0 3px; margin-left: 0; }
-.segmented button:last-child { border-radius: 0 3px 3px 0; }
+.segmented button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.segmented button:last-child { border-radius: 0 4px 4px 0; }
 .segmented button.selected {
-  background: #0a66c2;
-  border-color: #0a66c2;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
   opacity: 1;
 }
 input.short { width: 110px; }
+/* What has been scanned, on a line of its own under the name: an icon, a
+   strong figure and a quiet word for each. */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin-bottom: 12px;
+}
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stat svg { color: var(--accent); }
+.stat b {
+  color: var(--text);
+  font-size: 14px;
+}
 .confirm {
   display: flex;
   align-items: center;
@@ -75,23 +204,46 @@ input.short { width: 110px; }
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 10px;
-  border: 1px solid #d9a441;
-  background: #fff7e0;
-  border-radius: 3px;
+  border: 1px solid var(--confirm-border);
+  background: var(--confirm-bg);
+  border-radius: 4px;
 }
+/* Saved databases: a save line, then the list. */
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.databases .actions input { width: 220px; }
+.databases .confirm { margin: 10px 0 0; }
+.load-choice { flex-direction: column; align-items: stretch; }
+.choice { display: flex; align-items: baseline; gap: 10px; }
+.choice button { flex: none; min-width: 78px; }
+table.saved { width: auto; min-width: 60%; }
+table.saved td { white-space: nowrap; }
+td.saved-load { text-align: right; }
+button.selected { border-color: var(--accent); color: var(--accent); }
 .message {
   padding: 6px 10px;
   margin-bottom: 8px;
-  border-radius: 3px;
+  border-radius: 4px;
 }
-.message.error { background: #fde8e8; border: 1px solid #e5a3a3; }
-.message.notice { background: #eaf3fb; border: 1px solid #b5d2ec; }
+.message.error { background: var(--error-bg); border: 1px solid var(--error-border); }
+.message.notice { background: var(--notice-bg); border: 1px solid var(--notice-border); }
 input, select {
   font: inherit;
-  padding: 4px 6px;
-  border: 1px solid #b5b5b5;
-  border-radius: 3px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field-bg);
+  color: var(--text);
 }
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+input::placeholder { color: var(--muted); }
 .filters input { flex: 1; min-width: 180px; }
 table {
   width: 100%;
@@ -99,28 +251,66 @@ table {
 }
 th, td {
   text-align: left;
-  padding: 4px 8px;
-  border-bottom: 1px solid #e3e3e3;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
+/* Headings are quieter than the figures under them, and sit on an accent
+   rule. The rule is a shadow, because a border does not stay with a
+   heading that sticks to the top while the list scrolls. */
 th {
   position: sticky;
   top: 0;
-  background: #f3f3f3;
+  background: var(--header-bg);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  border-bottom: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
   user-select: none;
 }
 th.num, td.num { text-align: right; }
-tbody tr:hover { background: #f7fafd; }
+/* A length's other unit, in its own column beside the shown one, with a
+   gap wide enough to tell the two apart without brackets. */
+th.other, td.other {
+  text-align: right;
+  padding-left: 14px;
+}
+td.other { color: var(--muted); }
+/* The diameter in the unit being shown: the figure the eye looks for. */
+td.main { font-weight: 700; }
+/* Every other row of the list is tinted, to follow a wide row across. */
+tbody tr:nth-child(even) { background: var(--stripe); }
+tbody tr:hover { background: var(--row-hover); }
+/* The description column keeps a set width (TallyTable sets the variable),
+   so one long description cannot stretch the whole list. A cut-off
+   description ends in "…" and shows in full when the pointer rests on it. */
+td .clip {
+  width: var(--description-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The handle on that column's heading: drag it to change the width. */
+th .resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  border-right: 2px solid var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+th .resizer:hover, th .resizer:active { border-right-color: var(--accent); }
 .panel {
   padding: 8px 10px;
   margin-bottom: 10px;
-  border: 1px solid #cfcfcf;
-  border-radius: 3px;
-  background: #fafafa;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--surface);
 }
 .panel .actions { margin-bottom: 6px; }
-.panel button.link { margin-left: 0; }
 .crumbs { margin-bottom: 6px; }
 ul.folders, ul.problems {
   list-style: none;
@@ -131,12 +321,143 @@ ul.folders, ul.problems {
 }
 ul.folders li { padding: 2px 0; }
 ul.problems li { padding: 2px 0; white-space: normal; }
-ul.problems li.failed strong { color: #a11; }
+ul.problems li.failed strong { color: var(--error-text); }
 .progress {
   height: 8px;
   margin-bottom: 6px;
-  background: #e3e3e3;
+  background: var(--track);
   border-radius: 4px;
   overflow: hidden;
 }
-.progress div { height: 100%; background: #0a66c2; }
+.progress div { height: 100%; background: var(--accent); }
+tbody tr.clickable { cursor: pointer; }
+h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+h3 {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+.detail p { margin: 0; }
+/* The cutter's name and its four figures share one line. */
+.detail .summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.detail .title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Fusion's tool pictures are drawn on white, so they keep a white tile in
+   either theme. */
+.tool-picture {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: var(--picture-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+}
+.detail .tiles {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 380px;
+}
+/* A figure on a tile: a quiet label over a strong number, marked on the left
+   with the accent. */
+.tile {
+  padding: 6px 9px;
+  border: 1px solid var(--surface-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.tile span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.tile b {
+  font-size: 14px;
+  white-space: nowrap;
+}
+/* A note under a figure, on its own line so it never runs out of the tile. */
+.tile small {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Geometry on the left, the usual setup beside it. */
+.detail .columns {
+  display: grid;
+  /* The geometry column is as wide as its longest line, which is longer for
+     a tool shown in both units. */
+  grid-template-columns: minmax(200px, max-content) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.detail h3 { margin-top: 0; }
+.detail .columns + h3, .detail h3.after { margin-top: 14px; }
+.detail p.small { margin: 4px 0 0; }
+.detail .scroll.after, .detail div.after { margin-bottom: 14px; }
+/* A small label beside a description: "3 merged". */
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  color: var(--link);
+  font-size: 11px;
+}
+.tag.count { margin: 0; }
+/* The tick that puts a cutter in the holding library. */
+th.pick, td.pick { text-align: center; padding-left: 6px; padding-right: 2px; cursor: default; }
+input[type='checkbox'] { accent-color: var(--accent); margin: 0; padding: 0; vertical-align: middle; }
+.detail .actions.library { margin-bottom: 12px; }
+/* A narrow column's heading, set smaller so the column stays narrow. */
+th.small { font-size: 10.5px; padding-left: 2px; padding-right: 4px; }
+.panel-head .actions { margin: 0; }
+.detail .note {
+  font-weight: 400;
+  color: var(--muted);
+}
+.detail .three {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.detail td.wrap, .detail .three th { white-space: normal; }
+.detail .three th .note { display: block; }
+.detail tr.usual td { font-weight: 700; }
+/* A wide table scrolls on its own instead of widening the whole palette. */
+.detail .scroll { overflow-x: auto; }
+.detail .scroll th, .detail .scroll td { padding: 4px 5px; }
+/* A value that is not the cutter's usual one. */
+.differs {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--confirm-border);
+  border-radius: 4px;
+  background: var(--confirm-bg);
+  color: var(--mark-text);
+}
+/* The small tables of the detail: their headings do not sort or stick, and
+   their rows are neither tinted nor lit by the pointer. */
+table.plain th {
+  position: static;
+  cursor: default;
+}
+table.plain tbody tr:nth-child(even), table.plain tbody tr:hover { background: none; }

@@ -6,9 +6,11 @@ import adsk.core
 import datetime
 import json
 import os
+import sys
 import traceback
+from pathlib import Path
 
-from toolguru_lib import extract, hub
+from toolguru_lib import extract, holding, hub, library, theme, tool_pictures
 from toolguru_lib.records import ScanError
 from toolguru_lib.fusion360utils import event_utils as futil
 from toolguru_lib.fusion360utils import general_utils as gutil
@@ -24,6 +26,7 @@ from .state import state
 _icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources')
 _local_handlers: list = []
 _scan_event: adsk.core.CustomEvent | None = None
+_pictures: dict[str, str] = {}   # tool type -> Fusion's picture of it
 _step_queued = False   # a scan step is waiting in Fusion's event queue
 
 
@@ -46,7 +49,9 @@ def start(panel: adsk.core.ToolbarPanel) -> None:
     # gives you two copies of the PANEL_ID constant that can silently drift.
     panel.controls.addCommand(cmd_def)
 
-    global _scan_event, _step_queued
+    global _scan_event, _step_queued, _pictures
+    # Fusion's program sits at the top of its install folder.
+    _pictures = tool_pictures.find_pictures(Path(sys.executable).parent)
     app.unregisterCustomEvent(SCAN_EVENT_ID)   # left by a load that never stopped
     _scan_event = app.registerCustomEvent(SCAN_EVENT_ID)
     futil.add_handler(_scan_event, _on_scan_step)
@@ -58,7 +63,7 @@ def stop() -> None:
     app = adsk.core.Application.get()
     ui = app.userInterface
 
-    # The queue is in the dataset file; the scan can be resumed after a restart.
+    # The queue is in the data file; the scan can be resumed after a restart.
     state.scan_running = False
     _step_queued = False
     if _scan_event:
@@ -130,10 +135,20 @@ def _on_html_event(args: adsk.core.HTMLEventArgs) -> None:
             return
 
         handler(data)
-        args.returnData = json.dumps(actions.view(state))
+        args.returnData = json.dumps(_view())
     except:
         gutil.log(f'_on_html_event error:\n{traceback.format_exc()}', force_console=True)
         args.returnData = json.dumps({'error': 'Internal error'})
+
+
+def _view() -> dict:
+    """The palette's state, plus what only Fusion knows: its colour theme
+    and where its tool pictures are."""
+    preferences = adsk.core.Application.get().preferences.generalPreferences
+    view = actions.view(state)
+    view['theme'] = theme.palette_theme(preferences.activeUserInterfaceTheme)
+    view['toolPictures'] = _pictures
+    return view
 
 
 def _on_palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs) -> None:
@@ -148,16 +163,28 @@ def _handle_get_state(data: dict) -> None:
     pass
 
 
-def _handle_set_dataset(data: dict) -> None:
-    actions.set_dataset(state, str(data.get('dataset', '')))
-
-
 def _handle_set_count_by(data: dict) -> None:
     actions.set_count_by(state, str(data.get('countBy', '')))
 
 
+def _handle_set_display_unit(data: dict) -> None:
+    actions.set_display_unit(state, str(data.get('unit', '')))
+
+
+def _handle_set_description_width(data: dict) -> None:
+    actions.set_description_width(state, data.get('widthPx'))
+
+
 def _handle_set_stickout_tolerance(data: dict) -> None:
     actions.set_stickout_tolerance(state, data.get('toleranceMm'))
+
+
+def _handle_show_cutter(data: dict) -> None:
+    actions.show_cutter(state, str(data.get('cutterKey', '')))
+
+
+def _handle_close_cutter(data: dict) -> None:
+    actions.close_cutter(state)
 
 
 def _handle_scan_active(data: dict) -> None:
@@ -175,13 +202,80 @@ def _handle_scan_active(data: dict) -> None:
     actions.store_scan(state, document, observations)
 
 
-def _handle_clear_trial(data: dict) -> None:
-    actions.clear_trial(state)
-
-
-def _handle_reset_main(data: dict) -> None:
+def _handle_reset_data(data: dict) -> None:
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    actions.reset_main(state, str(data.get('confirm', '')), stamp)
+    actions.reset_data(state, str(data.get('confirm', '')), stamp)
+    if not state.error:
+        # The holding library is made from the data, so it goes with it.
+        library.delete_library(holding.LIBRARY_NAME)
+
+
+# --- Similar cutters ------------------------------------------------------------
+
+def _handle_open_similar(data: dict) -> None:
+    actions.open_similar(state)
+
+
+def _handle_close_similar(data: dict) -> None:
+    actions.close_similar(state)
+
+
+def _handle_merge_cutters(data: dict) -> None:
+    actions.merge_cutters(state, data.get('cutterKeys'))
+
+
+def _handle_split_cutters(data: dict) -> None:
+    actions.split_cutters(state, str(data.get('cutterKey', '')))
+
+
+def _handle_not_similar(data: dict) -> None:
+    actions.not_similar(state, str(data.get('signature', '')))
+
+
+# --- Holding library --------------------------------------------------------------
+
+def _handle_pick_for_library(data: dict) -> None:
+    assembly_key = data.get('assemblyKey')
+    actions.pick_for_library(
+        state, str(data.get('cutterKey', '')), bool(data.get('picked')),
+        str(assembly_key) if assembly_key else None)
+
+
+def _handle_write_library(data: dict) -> None:
+    if actions.refuse_while_scanning(state):
+        return
+    tools = actions.library_tools()
+    if not tools:
+        actions.library_failed(state, 'Tick at least one cutter to write a library.')
+        return
+    try:
+        written = library.write_library(holding.LIBRARY_NAME, tools)
+    except Exception:
+        gutil.log(f'Could not write the holding library:\n{traceback.format_exc()}',
+                  force_console=True)
+        actions.library_failed(
+            state, 'Fusion could not write the library. See View → Text Commands.')
+        return
+    actions.library_written(state, len(tools), written)
+
+
+# --- Saved databases ------------------------------------------------------------
+
+def _handle_open_databases(data: dict) -> None:
+    actions.open_databases(state)
+
+
+def _handle_close_databases(data: dict) -> None:
+    actions.close_databases(state)
+
+
+def _handle_save_database(data: dict) -> None:
+    actions.save_database(state, str(data.get('name', '')), bool(data.get('replace')))
+
+
+def _handle_load_database(data: dict) -> None:
+    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    actions.load_database(state, str(data.get('name', '')), str(data.get('mode', '')), stamp)
 
 
 # --- Folder scan --------------------------------------------------------------
@@ -261,17 +355,30 @@ def _push_state() -> None:
     """Send the current view to the palette, if it is open."""
     palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
     if palette and palette.isVisible:
-        palette.sendInfoToHTML('state', json.dumps(actions.view(state)))
+        palette.sendInfoToHTML('state', json.dumps(_view()))
 
 
 _handlers: dict = {
     'get_state': _handle_get_state,
-    'set_dataset': _handle_set_dataset,
     'set_count_by': _handle_set_count_by,
+    'set_display_unit': _handle_set_display_unit,
+    'set_description_width': _handle_set_description_width,
     'set_stickout_tolerance': _handle_set_stickout_tolerance,
+    'show_cutter': _handle_show_cutter,
+    'close_cutter': _handle_close_cutter,
     'scan_active': _handle_scan_active,
-    'clear_trial': _handle_clear_trial,
-    'reset_main': _handle_reset_main,
+    'reset_data': _handle_reset_data,
+    'open_similar': _handle_open_similar,
+    'close_similar': _handle_close_similar,
+    'merge_cutters': _handle_merge_cutters,
+    'split_cutters': _handle_split_cutters,
+    'not_similar': _handle_not_similar,
+    'pick_for_library': _handle_pick_for_library,
+    'write_library': _handle_write_library,
+    'open_databases': _handle_open_databases,
+    'close_databases': _handle_close_databases,
+    'save_database': _handle_save_database,
+    'load_database': _handle_load_database,
     'browse_folder': _handle_browse_folder,
     'close_folder_picker': _handle_close_folder_picker,
     'count_folder': _handle_count_folder,

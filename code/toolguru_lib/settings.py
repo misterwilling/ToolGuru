@@ -1,6 +1,6 @@
-"""The user's ToolGuru settings: one small JSON file beside the datasets in
-the home data folder. It belongs to neither dataset, so clearing Trial or
-resetting Main leaves it alone.
+"""The user's ToolGuru settings: one small JSON file beside the data file in
+the home data folder. It is not part of the scan data, so a reset leaves
+it alone.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from pathlib import Path
 from toolguru_lib.store import data_dir
 
 COUNT_BY = ('cutter', 'assembly')
+DISPLAY_UNITS = ('in', 'mm')
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,12 @@ class Settings:
     count_by: str = 'cutter'
     # Stickouts this close together count as the same assembly.
     stickout_tolerance_mm: float = 0.5
+    # The unit lengths are shown in. A tool entered in the other unit shows
+    # that one too, in brackets. Everything is stored in millimetres.
+    display_unit: str = 'in'
+    # How wide the tally's description column is, in pixels. The palette
+    # sets the limits; this only remembers where the user left it.
+    description_width_px: int = 240
 
 
 def settings_path(base_dir: Path | None = None) -> Path:
@@ -36,7 +43,10 @@ def load(base_dir: Path | None = None) -> Settings:
     return Settings(
         count_by=saved.get('count_by', defaults.count_by),
         stickout_tolerance_mm=saved.get(
-            'stickout_tolerance_mm', defaults.stickout_tolerance_mm))
+            'stickout_tolerance_mm', defaults.stickout_tolerance_mm),
+        display_unit=saved.get('display_unit', defaults.display_unit),
+        description_width_px=saved.get(
+            'description_width_px', defaults.description_width_px))
 
 
 def save(settings: Settings, base_dir: Path | None = None) -> None:

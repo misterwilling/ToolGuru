@@ -1,8 +1,7 @@
 """SQLite storage for scan results.
 
-Two datasets, each its own file in the user's home directory and never in
-the add-in folder: 'trial' for small test scans (cleared with one call) and
-'main' for the real sweep (reset only after a backup copy is written).
+One file in the user's home directory, never in the add-in folder. It is
+emptied only by a reset, which writes a backup copy first.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from pathlib import Path
 from toolguru_lib import assembly
 from toolguru_lib.records import DocumentRecord, FileRef, ObservationRecord
 
-DATASETS = ('trial', 'main')
+DATA_FILE = 'toolguru.sqlite'
 
 _DOCUMENT_COLUMNS = [f.name for f in fields(DocumentRecord)]
 _OBSERVATION_COLUMNS = [f.name for f in fields(ObservationRecord)]
@@ -50,12 +49,25 @@ CREATE TABLE IF NOT EXISTS observations (
     stickout_mm REAL,
     spindle_speed TEXT NOT NULL,
     feed TEXT NOT NULL,
+    spindle_rpm REAL,
+    feed_mm_min REAL,
     preset TEXT NOT NULL,
     cutting_time_s REAL,
     cutter_fields TEXT NOT NULL,
     tool_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS observations_by_cutter ON observations(cutter_key);
+CREATE TABLE IF NOT EXISTS merged_cutters (
+    cutter_key TEXT PRIMARY KEY,
+    merge_group TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS not_similar (
+    signature TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS library_picks (
+    cutter_key TEXT PRIMARY KEY,
+    assembly_key TEXT
+);
 CREATE TABLE IF NOT EXISTS scan_job (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     folder TEXT NOT NULL
@@ -76,12 +88,19 @@ PENDING, OPENING, SCANNED, SKIPPED, FAILED = (
 INTERRUPTED = ('The scan stopped while this program was open. '
                'Scan it on its own to check it.')
 
-# Columns added after datasets already existed. An older file gains them on
-# open and they are filled from each row's stored tool JSON.
-_ADDED_COLUMNS = {
+# Columns added after data files already existed. An older file gains them on
+# open. The holder columns are filled from each row's stored tool JSON. The
+# speed and feed numbers cannot be: they stay empty until the program is
+# scanned again.
+_HOLDER_COLUMNS = {
     'holder_product_id': "TEXT NOT NULL DEFAULT ''",
     'holder_shape': "TEXT NOT NULL DEFAULT ''",
     'stickout_mm': 'REAL',
+}
+_ADDED_COLUMNS = {
+    **_HOLDER_COLUMNS,
+    'spindle_rpm': 'REAL',
+    'feed_mm_min': 'REAL',
 }
 
 
@@ -94,6 +113,8 @@ def _upgrade(conn: sqlite3.Connection) -> None:
     for name in missing:
         conn.execute(
             f'ALTER TABLE observations ADD COLUMN {name} {_ADDED_COLUMNS[name]}')
+    if not any(name in _HOLDER_COLUMNS for name in missing):
+        return
     for row in conn.execute('SELECT id, tool_json FROM observations').fetchall():
         held = assembly.describe(json.loads(row['tool_json']))
         conn.execute(
@@ -107,14 +128,12 @@ def data_dir() -> Path:
     return Path.home() / '.toolguru'
 
 
-def dataset_path(dataset: str, base_dir: Path | None = None) -> Path:
-    if dataset not in DATASETS:
-        raise ValueError(f'Unknown dataset: {dataset!r}')
-    return (base_dir or data_dir()) / f'{dataset}.sqlite'
+def data_path(base_dir: Path | None = None) -> Path:
+    return (base_dir or data_dir()) / DATA_FILE
 
 
 class Store:
-    """One dataset file. Opens a connection per call so no file handle is held
+    """The data file. Opens a connection per call so no file handle is held
     between palette events."""
 
     def __init__(self, path: Path) -> None:
@@ -160,19 +179,23 @@ class Store:
                 'cutters': cutters}
 
     def observation_rows(self) -> list[dict]:
-        """Every observation joined with its document's dates."""
+        """Every observation joined with its document's name and dates."""
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                'SELECT o.*, d.date_created, d.date_modified '
+                'SELECT o.*, d.name AS document_name, d.date_created, '
+                'd.date_modified '
                 'FROM observations o JOIN documents d USING (file_id) '
                 'ORDER BY o.id').fetchall()
         return [dict(row) for row in rows]
 
     def clear(self) -> None:
-        """Remove everything; the dataset is as it was on first run."""
+        """Remove everything; the file is as it was on first run."""
         with closing(self._connect()) as conn, conn:
             conn.execute('DELETE FROM observations')
             conn.execute('DELETE FROM documents')
+            conn.execute('DELETE FROM merged_cutters')
+            conn.execute('DELETE FROM not_similar')
+            conn.execute('DELETE FROM library_picks')
             conn.execute('DELETE FROM scan_items')
             conn.execute('DELETE FROM scan_job')
 
@@ -188,8 +211,115 @@ class Store:
         self.clear()
         return backup
 
+    # --- Cutters treated as the same -----------------------------------------
+    # The user's decisions only. The observations keep the cutter each was
+    # scanned as; similar.apply_merges combines them on the way to the tally.
+
+    def merged_cutters(self) -> dict[str, str]:
+        """Each merged cutter's key with the group it was put in."""
+        with closing(self._connect()) as conn:
+            return {row['cutter_key']: row['merge_group'] for row in conn.execute(
+                'SELECT cutter_key, merge_group FROM merged_cutters')}
+
+    def merge_cutters(self, cutter_keys: list[str]) -> None:
+        """Treat these cutters as one tool. Any group one of them is already
+        in joins too, so groups never overlap."""
+        keys = sorted(set(cutter_keys))
+        if len(keys) < 2:
+            return
+        marks = ', '.join('?' * len(keys))
+        with closing(self._connect()) as conn, conn:
+            joined = [row['merge_group'] for row in conn.execute(
+                f'SELECT DISTINCT merge_group FROM merged_cutters '
+                f'WHERE cutter_key IN ({marks})', keys)]
+            group = min(joined) if joined else keys[0]
+            for other in joined:
+                conn.execute('UPDATE merged_cutters SET merge_group = ? '
+                             'WHERE merge_group = ?', (group, other))
+            conn.executemany(
+                'INSERT INTO merged_cutters (cutter_key, merge_group) VALUES (?, ?) '
+                'ON CONFLICT(cutter_key) DO UPDATE SET merge_group = excluded.merge_group',
+                [(key, group) for key in keys])
+
+    def split_cutters(self, cutter_key: str) -> int:
+        """Undo the merge this cutter is part of. Returns how many cutters
+        were in it; 0 when it was not merged."""
+        with closing(self._connect()) as conn, conn:
+            return conn.execute(
+                'DELETE FROM merged_cutters WHERE merge_group = '
+                '(SELECT merge_group FROM merged_cutters WHERE cutter_key = ?)',
+                (cutter_key,)).rowcount
+
+    def not_similar(self) -> set[str]:
+        """The suggestions answered "not the same" (see similar.signature)."""
+        with closing(self._connect()) as conn:
+            return {row['signature'] for row in
+                    conn.execute('SELECT signature FROM not_similar')}
+
+    def mark_not_similar(self, signature: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute('INSERT OR IGNORE INTO not_similar (signature) VALUES (?)',
+                         (signature,))
+
+    # --- Cutters picked for the holding library -------------------------------
+
+    def library_picks(self) -> dict[str, str | None]:
+        """Each picked cutter's key with the assembly chosen for it; None
+        means the usual one (see holding.entries)."""
+        with closing(self._connect()) as conn:
+            return {row['cutter_key']: row['assembly_key'] for row in conn.execute(
+                'SELECT cutter_key, assembly_key FROM library_picks')}
+
+    def pick_for_library(self, cutter_keys: list[str],
+                         assembly_key: str | None) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.executemany(
+                'INSERT INTO library_picks (cutter_key, assembly_key) VALUES (?, ?) '
+                'ON CONFLICT(cutter_key) DO UPDATE SET assembly_key = excluded.assembly_key',
+                [(key, assembly_key) for key in cutter_keys])
+
+    def unpick_for_library(self, cutter_keys: list[str]) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.executemany('DELETE FROM library_picks WHERE cutter_key = ?',
+                             [(key,) for key in cutter_keys])
+
+    def merge_from(self, other: Path) -> dict[str, int]:
+        """Add another data file's programs to this one.
+
+        A program that is in both keeps this file's scan, unless the other
+        file holds a later version of the program: then the other's scan
+        takes its place. Returns how many programs were added, how many were
+        updated, and how many were kept as they were.
+        """
+        documents = ', '.join(_DOCUMENT_COLUMNS)
+        observations = ', '.join(_OBSERVATION_COLUMNS)
+        with closing(self._connect()) as conn:
+            conn.execute('ATTACH DATABASE ? AS other', (str(other),))
+            with conn:
+                shared = conn.execute(
+                    'SELECT COUNT(*) FROM other.documents o '
+                    'JOIN documents d ON d.file_id = o.file_id').fetchone()[0]
+                conn.execute(
+                    'CREATE TEMP TABLE incoming AS SELECT o.file_id FROM other.documents o '
+                    'LEFT JOIN documents d ON d.file_id = o.file_id '
+                    'WHERE d.file_id IS NULL OR o.version > d.version')
+                incoming = conn.execute('SELECT COUNT(*) FROM incoming').fetchone()[0]
+                updated = conn.execute(
+                    'DELETE FROM documents WHERE file_id IN '
+                    '(SELECT file_id FROM incoming)').rowcount
+                conn.execute(
+                    f'INSERT INTO documents ({documents}) SELECT {documents} '
+                    'FROM other.documents WHERE file_id IN (SELECT file_id FROM incoming)')
+                conn.execute(
+                    f'INSERT INTO observations ({observations}) SELECT {observations} '
+                    'FROM other.observations WHERE file_id IN (SELECT file_id FROM incoming)')
+                conn.execute('DROP TABLE incoming')
+            conn.execute('DETACH DATABASE other')
+        return {'added': incoming - updated, 'updated': updated,
+                'kept': shared - updated}
+
     # --- Folder scan queue --------------------------------------------------
-    # One folder scan at a time per dataset. It is kept in the file so a scan
+    # One folder scan at a time. It is kept in the file so a scan
     # can carry on after the palette, the add-in or Fusion was closed.
 
     def start_job(self, folder: str, files: list[FileRef]) -> None:

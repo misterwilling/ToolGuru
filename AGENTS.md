@@ -194,9 +194,9 @@ _From /jgl-fusion-scope on 2026-11-11. Detail in docs/SCOPE.md._
 - **Workspaces:** Manufacturing (`CAMEnvironment`).
 - **Reads vs mutates:** scanned programs are read-only (open, read, close
   without saving). Writes only its own database and its own tool libraries.
-- **Persistence:** SQLite files in the user's home directory, separate Trial
-  and Main datasets; nothing on documents, nothing in the repo.
-- **First milestone:** Trial dataset, "Scan active document", Tally screen, and
-  "Clear trial data".
+- **Persistence:** one SQLite file in the user's home directory, with a
+  settings file beside it; nothing on documents, nothing in the repo.
+- **First milestone:** "Scan active document", the Tally screen, and a reset
+  that backs the data up first.
 - **Public repo:** no machine names, program names, project names or hub ids in
   code, tests, fixtures or docs.

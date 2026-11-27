@@ -68,7 +68,7 @@ describe('browserHere', () => {
 
 describe('a state pushed during a scan', () => {
   it('is accepted like a reply, and anything else is not', () => {
-    expect(isAppState({ dataset: 'trial', tally: [], scan: makeScan() })).toBe(true)
+    expect(isAppState({ counts: {}, tally: [], scan: makeScan() })).toBe(true)
     expect(isAppState('{}')).toBe(false)
   })
 })

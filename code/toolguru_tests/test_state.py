@@ -1,4 +1,4 @@
-"""Palette state and actions: what each button does to the datasets."""
+"""Palette state and actions: what each button does to the data."""
 
 import pytest
 
@@ -10,7 +10,7 @@ from toolguru_commands.commandPalette import actions
 from toolguru_commands.commandPalette.state import AppState
 from toolguru_lib import settings as user_settings
 from toolguru_lib.settings import Settings
-from toolguru_lib.store import Store, dataset_path
+from toolguru_lib.store import Store, data_path
 from toolguru_tests.factories import (
     make_document, make_holder, make_observation, make_tool)
 
@@ -19,26 +19,15 @@ DEFAULTS = Settings()
 
 
 class TestAppState:
-    def test_starts_in_trial_with_nothing_to_report(self):
+    def test_starts_with_nothing_to_report(self):
         assert AppState().serialize(EMPTY, [], DEFAULTS) == {
-            'dataset': 'trial', 'counts': EMPTY,
-            'countBy': 'cutter', 'stickoutToleranceMm': 0.5, 'tally': [],
+            'counts': EMPTY,
+            'countBy': 'cutter', 'stickoutToleranceMm': 0.5,
+            'displayUnit': 'in', 'descriptionWidthPx': 240, 'tally': [],
+            'detail': None, 'databases': None, 'similar': None, 'libraryCount': 0,
             'lastScan': None, 'browser': None, 'confirmScan': None,
             'scan': None, 'notice': '', 'error': '',
         }
-
-    def test_unknown_dataset_is_rejected_and_state_is_unchanged(self):
-        state = AppState()
-        with pytest.raises(ValueError, match='scratch'):
-            state.set_dataset('scratch')
-        assert state.dataset == 'trial'
-
-    def test_switching_dataset_forgets_the_last_scan(self):
-        state = AppState()
-        state.last_scan = {'name': 'x'}
-        state.set_dataset('main')
-        assert state.dataset == 'main'
-        assert state.last_scan is None
 
     def test_serialize_is_a_copy(self):
         state = AppState()
@@ -48,10 +37,12 @@ class TestAppState:
 
 
 class TestActions:
-    def test_view_of_a_new_trial_dataset_is_empty(self, tmp_path):
+    def test_view_before_anything_is_scanned_is_empty(self, tmp_path):
         assert actions.view(AppState(), tmp_path) == {
-            'dataset': 'trial', 'counts': EMPTY,
-            'countBy': 'cutter', 'stickoutToleranceMm': 0.5, 'tally': [],
+            'counts': EMPTY,
+            'countBy': 'cutter', 'stickoutToleranceMm': 0.5,
+            'displayUnit': 'in', 'descriptionWidthPx': 240, 'tally': [],
+            'detail': None, 'databases': None, 'similar': None, 'libraryCount': 0,
             'lastScan': None, 'browser': None, 'confirmScan': None,
             'scan': None, 'notice': '', 'error': '',
         }
@@ -71,28 +62,6 @@ class TestActions:
         assert [(row['tool_type'], row['operations']) for row in view['tally']] == [
             ('flat end mill', 2), ('drill', 1)]
 
-    def test_scan_goes_to_the_active_dataset_only(self, tmp_path):
-        state = AppState()
-        actions.set_dataset(state, 'main')
-        actions.store_scan(state, make_document('a'), [make_observation('a')], tmp_path)
-        assert Store(dataset_path('main', tmp_path)).counts()['documents'] == 1
-        assert Store(dataset_path('trial', tmp_path)).counts() == EMPTY
-
-    def test_view_shows_only_the_active_dataset(self, tmp_path):
-        state = AppState()
-        actions.store_scan(state, make_document('a'), [make_observation('a')], tmp_path)
-        actions.set_dataset(state, 'main')
-        view = actions.view(state, tmp_path)
-        assert view['dataset'] == 'main'
-        assert view['counts'] == EMPTY
-        assert view['lastScan'] is None
-
-    def test_set_dataset_to_something_unknown_reports_an_error(self, tmp_path):
-        state = AppState()
-        actions.set_dataset(state, 'scratch')
-        assert state.dataset == 'trial'
-        assert state.error == "Unknown dataset: 'scratch'"
-
     def test_scan_failed_shows_the_message(self):
         state = AppState()
         actions.scan_failed(state, 'This document has no Manufacturing data to scan.')
@@ -105,49 +74,159 @@ class TestActions:
         actions.store_scan(state, make_document('a'), [], tmp_path)
         assert state.error == ''
 
-    def test_clear_trial_empties_trial_and_leaves_main(self, tmp_path):
+    def test_reset_without_the_word_changes_nothing(self, tmp_path):
         state = AppState()
-        actions.store_scan(state, make_document('a'), [make_observation('a')], tmp_path)
-        actions.set_dataset(state, 'main')
         actions.store_scan(state, make_document('m'), [make_observation('m')], tmp_path)
-        main_bytes = dataset_path('main', tmp_path).read_bytes()
 
-        actions.clear_trial(state, tmp_path)
+        actions.reset_data(state, 'reset', '20260101-120000', tmp_path)
 
-        assert Store(dataset_path('trial', tmp_path)).counts() == EMPTY
-        assert dataset_path('main', tmp_path).read_bytes() == main_bytes
-        assert state.notice == 'Trial data cleared.'
-        assert state.last_scan['name'] == 'Program m'
+        assert state.error == 'Type RESET to reset the data.'
+        assert Store(data_path(tmp_path)).counts()['documents'] == 1
+        assert not (tmp_path / 'toolguru-backup-20260101-120000.sqlite').exists()
 
-    def test_clear_trial_while_in_trial_forgets_the_last_scan(self, tmp_path):
+    def test_reset_backs_up_then_empties(self, tmp_path):
         state = AppState()
-        actions.store_scan(state, make_document('a'), [make_observation('a')], tmp_path)
-        actions.clear_trial(state, tmp_path)
+        actions.store_scan(state, make_document('m'), [make_observation('m')], tmp_path)
+
+        actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
+
+        backup = tmp_path / 'toolguru-backup-20260101-120000.sqlite'
+        assert Store(backup).counts() == {'documents': 1, 'observations': 1, 'cutters': 1}
+        assert Store(data_path(tmp_path)).counts() == EMPTY
+        assert state.notice == (
+            'Data reset. Backup saved as toolguru-backup-20260101-120000.sqlite.')
+
+    def test_reset_forgets_the_last_scan(self, tmp_path):
+        state = AppState()
+        actions.store_scan(state, make_document('m'), [make_observation('m')], tmp_path)
+        actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
         assert actions.view(state, tmp_path)['lastScan'] is None
 
-    def test_reset_main_without_the_word_changes_nothing(self, tmp_path):
+
+class TestDisplayUnit:
+    """Lengths are shown in inches unless the user picks millimetres."""
+
+    def test_lengths_are_shown_in_inches_until_told_otherwise(self, tmp_path):
+        assert actions.view(AppState(), tmp_path)['displayUnit'] == 'in'
+
+    def test_the_choice_is_remembered_by_a_new_session(self, tmp_path):
+        actions.set_display_unit(AppState(), 'mm', tmp_path)
+        assert actions.view(AppState(), tmp_path)['displayUnit'] == 'mm'
+
+    def test_changing_the_unit_keeps_the_other_settings(self, tmp_path):
         state = AppState()
-        actions.set_dataset(state, 'main')
-        actions.store_scan(state, make_document('m'), [make_observation('m')], tmp_path)
+        actions.set_count_by(state, 'assembly', tmp_path)
+        actions.set_stickout_tolerance(state, 1.25, tmp_path)
+        actions.set_display_unit(state, 'mm', tmp_path)
+        assert user_settings.load(tmp_path) == Settings('assembly', 1.25, 'mm')
 
-        actions.reset_main(state, 'reset', '20260101-120000', tmp_path)
-
-        assert state.error == 'Type RESET to reset the main data.'
-        assert Store(dataset_path('main', tmp_path)).counts()['documents'] == 1
-        assert not (tmp_path / 'main-backup-20260101-120000.sqlite').exists()
-
-    def test_reset_main_backs_up_then_empties(self, tmp_path):
+    def test_changing_the_unit_does_not_change_the_stored_numbers(self, tmp_path):
         state = AppState()
-        actions.set_dataset(state, 'main')
-        actions.store_scan(state, make_document('m'), [make_observation('m')], tmp_path)
+        actions.store_scan(state, make_document('a'), [make_observation('a')], tmp_path)
+        before = actions.view(state, tmp_path)['tally']
+        actions.set_display_unit(state, 'mm', tmp_path)
+        assert actions.view(state, tmp_path)['tally'] == before
+        assert before[0]['diameter_mm'] == 12.7
 
-        actions.reset_main(state, 'RESET', '20260101-120000', tmp_path)
+    def test_an_unknown_unit_is_refused(self, tmp_path):
+        state = AppState()
+        actions.set_display_unit(state, 'cm', tmp_path)
+        assert state.error == "Unknown unit: 'cm'"
+        assert user_settings.load(tmp_path).display_unit == 'in'
 
-        backup = tmp_path / 'main-backup-20260101-120000.sqlite'
-        assert Store(backup).counts() == {'documents': 1, 'observations': 1, 'cutters': 1}
-        assert Store(dataset_path('main', tmp_path)).counts() == EMPTY
-        assert state.notice == (
-            'Main data reset. Backup saved as main-backup-20260101-120000.sqlite.')
+
+class TestDescriptionWidth:
+    """The tally's description column stays as wide as the user left it."""
+
+    def test_the_column_starts_240_pixels_wide(self, tmp_path):
+        assert actions.view(AppState(), tmp_path)['descriptionWidthPx'] == 240
+
+    def test_the_width_is_remembered_by_a_new_session(self, tmp_path):
+        actions.set_description_width(AppState(), 410, tmp_path)
+        assert actions.view(AppState(), tmp_path)['descriptionWidthPx'] == 410
+
+    def test_the_width_is_stored_as_a_whole_number_of_pixels(self, tmp_path):
+        actions.set_description_width(AppState(), 312.6, tmp_path)
+        assert user_settings.load(tmp_path).description_width_px == 313
+
+    def test_changing_the_width_keeps_the_other_settings(self, tmp_path):
+        state = AppState()
+        actions.set_count_by(state, 'assembly', tmp_path)
+        actions.set_display_unit(state, 'mm', tmp_path)
+        actions.set_description_width(state, 500, tmp_path)
+        assert user_settings.load(tmp_path) == Settings('assembly', 0.5, 'mm', 500)
+
+    @pytest.mark.parametrize('width', [0, -40, 0.4, '300', None, True,
+                                       float('nan'), float('inf')])
+    def test_a_width_that_is_not_a_number_of_pixels_is_refused(self, tmp_path, width):
+        state = AppState()
+        actions.set_description_width(state, 410, tmp_path)
+        actions.set_description_width(state, width, tmp_path)
+        assert state.error == 'The column width must be a number of pixels, one or more.'
+        assert user_settings.load(tmp_path).description_width_px == 410
+
+
+class TestCutterDetail:
+    """Opening one cutter's detail from the tally."""
+
+    def _scan(self, state, tmp_path, file_id='a'):
+        actions.store_scan(state, make_document(file_id), [
+            make_observation(file_id),
+            make_observation(file_id, tool=make_tool(type='drill'))], tmp_path)
+        return {row['tool_type']: row['cutter_key']
+                for row in actions.view(state, tmp_path)['tally']}
+
+    def test_no_detail_until_a_cutter_is_opened(self, tmp_path):
+        state = AppState()
+        self._scan(state, tmp_path)
+        assert actions.view(state, tmp_path)['detail'] is None
+
+    def test_show_cutter_adds_that_cutters_detail_to_the_view(self, tmp_path):
+        state = AppState()
+        keys = self._scan(state, tmp_path)
+        actions.show_cutter(state, keys['drill'])
+        detail = actions.view(state, tmp_path)['detail']
+        assert (detail['cutter_key'], detail['tool_type'], detail['operations']) == (
+            keys['drill'], 'drill', 1)
+        assert [p['name'] for p in detail['program_list']] == ['Program a']
+
+    def test_close_cutter_removes_the_detail(self, tmp_path):
+        state = AppState()
+        keys = self._scan(state, tmp_path)
+        actions.show_cutter(state, keys['drill'])
+        actions.close_cutter(state)
+        assert actions.view(state, tmp_path)['detail'] is None
+
+    def test_an_open_detail_follows_new_scans(self, tmp_path):
+        state = AppState()
+        keys = self._scan(state, tmp_path, 'a')
+        actions.show_cutter(state, keys['drill'])
+        self._scan(state, tmp_path, 'b')
+        assert actions.view(state, tmp_path)['detail']['programs'] == 2
+
+    def test_detail_uses_the_saved_stickout_tolerance(self, tmp_path):
+        state = AppState()
+        actions.store_scan(state, make_document('a'), [
+            make_observation('a'),
+            make_observation('a', tool=make_tool(geometry={'LB': 1.51}))], tmp_path)
+        actions.show_cutter(state, actions.view(state, tmp_path)['tally'][0]['cutter_key'])
+        assert len(actions.view(state, tmp_path)['detail']['assemblies']) == 1
+        actions.set_stickout_tolerance(state, 0, tmp_path)
+        assert len(actions.view(state, tmp_path)['detail']['assemblies']) == 2
+
+    def test_a_cutter_that_is_not_in_the_data_shows_no_detail(self, tmp_path):
+        state = AppState()
+        self._scan(state, tmp_path)
+        actions.show_cutter(state, 'no-such-cutter')
+        assert actions.view(state, tmp_path)['detail'] is None
+
+    def test_resetting_the_data_closes_the_detail_for_good(self, tmp_path):
+        state = AppState()
+        keys = self._scan(state, tmp_path)
+        actions.show_cutter(state, keys['drill'])
+        actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
+        self._scan(state, tmp_path)   # the same cutter comes back
+        assert actions.view(state, tmp_path)['detail'] is None
 
 
 class TestCountBy:
@@ -226,9 +305,9 @@ class TestCountBy:
         assert state.error == 'Stickout tolerance must be a number, zero or more.'
         assert user_settings.load(tmp_path).stickout_tolerance_mm == 0.5
 
-    def test_clearing_trial_data_keeps_the_settings(self, tmp_path):
+    def test_resetting_the_data_keeps_the_settings(self, tmp_path):
         state = AppState()
         actions.set_count_by(state, 'assembly', tmp_path)
         actions.set_stickout_tolerance(state, 2.0, tmp_path)
-        actions.clear_trial(state, tmp_path)
+        actions.reset_data(state, 'RESET', '20260101-120000', tmp_path)
         assert user_settings.load(tmp_path) == Settings('assembly', 2.0)
