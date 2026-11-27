@@ -75,3 +75,86 @@ def make_observation(file_id: str = 'file-1', *, tool: dict | None = None,
         spindle_rpm=spindle_rpm, feed_mm_min=feed_mm_min)
     assert record is not None
     return record
+
+
+# --- What the Mastercam harvester writes (see toolguru_lib/mastercam.py) ------
+
+def make_harvest_holder(**overrides) -> dict:
+    """A made-up two-step holder as Mastercam lists one: spindle end first."""
+    holder = {
+        'name': 'Test Chuck',
+        'library_name': 'Test Holders',
+        'overall_height': 3.0,
+        'max_diameter': 1.75,
+        'segments': [
+            {'height': 2.0, 'dia_lower': 1.75, 'dia_upper': 1.75},
+            {'height': 1.0, 'dia_lower': 1.0, 'dia_upper': 1.25},
+        ],
+    }
+    holder.update(overrides)
+    return holder
+
+
+def make_harvest_operation(order: int = 1, *, tool: dict | None = None,
+                           no_tool: bool = False, slot: int = 3,
+                           seconds: float | None = 60.0, **overrides) -> dict:
+    """One operation of a made-up part file: a 1/2 inch 3-flute carbide end
+    mill, 1.5 in out of the holder, unless told otherwise."""
+    harvested_tool = {
+        'type': 'EndMill', 'name': '1/2 FLAT ENDMILL', 'number': 7, 'slot': slot,
+        'is_metric': False, 'diameter': 0.5, 'corner_radius': 0,
+        'flute_length': 1.25, 'shoulder_length': 1.25,
+        'length_as_set_in_holder': 1.5, 'shank_diameter': 0.5,
+        'shoulder_diameter': 0.5, 'tip_diameter': 0, 'flute_count': 3,
+        'tip_angle': 180, 'threads': 0, 'manufacturer_code': 'EX-500',
+        'material': 'CARBIDE',
+    }
+    harvested_tool.update(tool or {})
+    operation = {
+        'id': order, 'order': order, 'name': f'OP {order}', 'type': 'Contour',
+        'type_name': 'Contour (2D)', 'comment': '', 'is_transform': False,
+        'machine_group_id': 1, 'toolpath_group': 'Side 1', 'out_of_date': False,
+        'posting': True, 'spindle_speed': 8000, 'feed_rate': 40,
+        'plunge_rate': 20, 'cycle_time_seconds': seconds,
+        'tool': None if no_tool else harvested_tool,
+        'holder': None if no_tool else make_harvest_holder(),
+        'assembly': None if no_tool else {
+            'matched_by': 'slot', 'slot': harvested_tool['slot'], 'stickout': 1.5},
+    }
+    operation.update(overrides)
+    return operation
+
+
+def make_harvest_transform(order: int, seconds: float, **overrides) -> dict:
+    return make_harvest_operation(
+        order, no_tool=True, seconds=seconds, is_transform=True, type='4',
+        type_name='Transform/Translate', **overrides)
+
+
+def make_harvest_record(operations: list[dict] | None = None,
+                        path: str = r'C:\Parts\Example\Bracket.mcam',
+                        **overrides) -> dict:
+    """One part file as the harvester records it."""
+    operations = [make_harvest_operation()] if operations is None else operations
+    slots = {operation['tool']['slot'] for operation in operations
+             if operation.get('tool')}
+    record = {
+        'harvester_version': '3', 'source': 'mastercam', 'path': path,
+        'file_name': path.rsplit('\\', 1)[-1],
+        'harvested_at': '2026-03-01T10:00:00',
+        'disk_modified': '2025-06-15T08:30:00',
+        'history': {'count': 2, 'oldest': '2024-01-10T09:00:00',
+                    'newest': '2025-06-15T08:30:00'},
+        'machine_groups': [{'id': 1, 'name': 'Bracket',
+                            'machine_name': r'C:\Machines\Example VMC.mcam-mmd',
+                            'machine_description': 'Example VMC'}],
+        'operations': operations,
+        'tool_assemblies': [
+            {'slot': slot, 'stickout': 1.5,
+             'tool': {'overall_length': 1.5, 'true_physical_length': 3.0,
+                      'manufacturer': 'Example Tooling'}}
+            for slot in sorted(slots)],
+        'status': 'ok',
+    }
+    record.update(overrides)
+    return record

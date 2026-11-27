@@ -18,7 +18,7 @@ from toolguru_lib.fusion360utils import general_utils as gutil
 from ..ids import (
     CMD_ID, CMD_NAME, CMD_DESC,
     PALETTE_ID, PALETTE_NAME, PALETTE_WIDTH, PALETTE_HEIGHT,
-    SCAN_EVENT_ID,
+    SCAN_EVENT_ID, IMPORT_EVENT_ID,
 )
 from . import actions
 from .state import state
@@ -26,6 +26,7 @@ from .state import state
 _icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources')
 _local_handlers: list = []
 _scan_event: adsk.core.CustomEvent | None = None
+_import_event: adsk.core.CustomEvent | None = None
 _pictures: dict[str, str] = {}   # tool type -> Fusion's picture of it
 _step_queued = False   # a scan step is waiting in Fusion's event queue
 
@@ -49,17 +50,20 @@ def start(panel: adsk.core.ToolbarPanel) -> None:
     # gives you two copies of the PANEL_ID constant that can silently drift.
     panel.controls.addCommand(cmd_def)
 
-    global _scan_event, _step_queued, _pictures
+    global _scan_event, _import_event, _step_queued, _pictures
     # Fusion's program sits at the top of its install folder.
     _pictures = tool_pictures.find_pictures(Path(sys.executable).parent)
     app.unregisterCustomEvent(SCAN_EVENT_ID)   # left by a load that never stopped
     _scan_event = app.registerCustomEvent(SCAN_EVENT_ID)
     futil.add_handler(_scan_event, _on_scan_step)
     _step_queued = False
+    app.unregisterCustomEvent(IMPORT_EVENT_ID)
+    _import_event = app.registerCustomEvent(IMPORT_EVENT_ID)
+    futil.add_handler(_import_event, _on_import_scan_file)
 
 
 def stop() -> None:
-    global _scan_event, _step_queued
+    global _scan_event, _import_event, _step_queued
     app = adsk.core.Application.get()
     ui = app.userInterface
 
@@ -69,6 +73,9 @@ def stop() -> None:
     if _scan_event:
         app.unregisterCustomEvent(SCAN_EVENT_ID)
         _scan_event = None
+    if _import_event:
+        app.unregisterCustomEvent(IMPORT_EVENT_ID)
+        _import_event = None
 
     cmd_def = ui.commandDefinitions.itemById(CMD_ID)
     if cmd_def:
@@ -200,6 +207,33 @@ def _handle_scan_active(data: dict) -> None:
         actions.scan_failed(state, str(error))
         return
     actions.store_scan(state, document, observations)
+
+
+def _handle_import_scan_file(data: dict) -> None:
+    """Ask for the file once this event has returned: the file dialog blocks
+    Fusion, and must not be opened from inside the palette's event."""
+    if actions.refuse_while_scanning(state):
+        return
+    adsk.core.Application.get().fireCustomEvent(IMPORT_EVENT_ID, '')
+
+
+def _on_import_scan_file(args: adsk.core.CustomEventArgs) -> None:
+    try:
+        ui = adsk.core.Application.get().userInterface
+        dialog = ui.createFileDialog()
+        dialog.title = 'Import a scan file'
+        dialog.filter = 'Scan files (*.jsonl);;All files (*.*)'
+        dialog.isMultiSelectEnabled = False
+        if dialog.showOpen() != adsk.core.DialogResults.DialogOK:
+            return
+        actions.import_scan_file(state, Path(dialog.filename))
+        _push_state()
+    except:
+        gutil.log(f'_on_import_scan_file error:\n{traceback.format_exc()}',
+                  force_console=True)
+        actions.scan_failed(
+            state, 'The scan file could not be imported. See View → Text Commands.')
+        _push_state()
 
 
 def _handle_reset_data(data: dict) -> None:
@@ -371,6 +405,7 @@ _handlers: dict = {
     'show_cutter': _handle_show_cutter,
     'close_cutter': _handle_close_cutter,
     'scan_active': _handle_scan_active,
+    'import_scan_file': _handle_import_scan_file,
     'reset_data': _handle_reset_data,
     'open_similar': _handle_open_similar,
     'close_similar': _handle_close_similar,

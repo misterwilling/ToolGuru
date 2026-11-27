@@ -12,6 +12,12 @@ cutters merged with it: each preset found on the tool anywhere, used or
 not. Where a name has different numbers in different programs, the most
 recently saved program's version is the one written.
 
+Only a tool that Fusion itself wrote is ever written back to Fusion. A tool
+read from another CAM system (see mastercam.py) is ToolGuru's own rewriting
+of it, and Fusion can crash on a tool record it does not like. So a cutter
+seen only in such programs cannot be picked, and a line merged from both
+kinds is written from its Fusion scans alone.
+
 Pure Python. `library.py` does the writing in Fusion.
 """
 
@@ -37,6 +43,18 @@ _SURFACE_KEY = 'v_c'
 
 def _scanned_key(row: dict) -> str:
     return row.get('original_cutter_key', row['cutter_key'])
+
+
+def _from_fusion(row: dict) -> bool:
+    """True when the row's tool was scanned in Fusion, not read elsewhere."""
+    scanned = row.get('original_cutter_fields', row['cutter_fields'])
+    return not json.loads(scanned).get('source')
+
+
+def writable(rows: list[dict]) -> set[str]:
+    """The tally lines that can be written to a Fusion library: those with
+    at least one Fusion scan behind them. `rows` have merges applied."""
+    return {row['cutter_key'] for row in rows if _from_fusion(row)}
 
 
 def line_keys(rows: list[dict], cutter_key: str) -> set[str]:
@@ -126,8 +144,13 @@ def gathered_presets(group: list[dict], own: list[dict], unit: str) -> list[dict
     return gathered
 
 
-def entry(group: list[dict], wanted: str | None, tolerance_mm: float) -> dict:
-    """What is written for one cutter. `group` is all of its rows."""
+def entry(group: list[dict], wanted: str | None,
+          tolerance_mm: float) -> dict | None:
+    """What is written for one cutter. `group` is all of its rows. None
+    when it has no Fusion scan to write from."""
+    group = [row for row in group if _from_fusion(row)]
+    if not group:
+        return None
     assembly, band = _choose(group, wanted, tolerance_mm)
     shown = group[0]['cutter_key']
     # After a merge, prefer a scan of the cutter that names the line.
@@ -162,5 +185,7 @@ def entries(rows: list[dict], picks: dict[str, str | None],
         if not picked:
             continue
         wanted = next((picks[key] for key in picked if picks[key] is not None), None)
-        chosen[cutter_key] = entry(group, wanted, tolerance_mm)
+        written = entry(group, wanted, tolerance_mm)
+        if written is not None:
+            chosen[cutter_key] = written
     return chosen

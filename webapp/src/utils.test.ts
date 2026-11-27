@@ -13,7 +13,11 @@ import {
   libraryLine,
   libraryOptions,
   rowsBetween,
+  sourceLabel,
+  sourcesIn,
   tickedState,
+  uncreditedNote,
+  validSource,
   writeLibraryLabel,
   mergedCount,
   variantCells,
@@ -52,6 +56,8 @@ function makeRow(overrides?: Partial<TallyRow>): TallyRow {
     cutter_key: 'aaaa',
     merged: 1,
     in_library: false,
+    source: 'fusion',
+    writable: true,
     tool_type: 'flat end mill',
     family: 'milling',
     description: '1/2 flat end mill',
@@ -795,7 +801,7 @@ describe('the holding library', () => {
       units: ['inches'],
       assemblies: [assembly('one', 'Short holder', 25.4), assembly('two', 'Long holder', 50.8)],
       usual: { tool_number: null, machine: null, assembly_key: usual },
-      library: { picked: true, choice, assembly_key: written },
+      library: { picked: true, choice, assembly_key: written, writable: true },
     }) as unknown as CutterDetail
 
   it('offers the usual setup first and says which one that is', () => {
@@ -874,5 +880,79 @@ describe('ticking many lines', () => {
 
   it('has nothing ticked in an empty list', () => {
     expect(tickedState([], rows)).toBe('none')
+  })
+})
+
+describe('where a cutter was read from', () => {
+  const fusion = makeRow({ cutter_key: 'f' })
+  const mastercam = makeRow({ cutter_key: 'm', source: 'mastercam', writable: false })
+
+  it('names each CAM system properly, and passes an unknown one through', () => {
+    expect(sourceLabel('fusion')).toBe('Fusion')
+    expect(sourceLabel('mastercam')).toBe('Mastercam')
+    expect(sourceLabel('othercam')).toBe('othercam')
+  })
+
+  it('lists the systems in the data once each, Fusion first', () => {
+    expect(sourcesIn([mastercam, fusion, mastercam])).toEqual(['fusion', 'mastercam'])
+    expect(sourcesIn([mastercam])).toEqual(['mastercam'])
+    expect(sourcesIn([])).toEqual([])
+  })
+
+  it('filters the tally to one system', () => {
+    const keys = (source: string) => filterTally([fusion, mastercam], '', 'all', source).map((r) => r.cutter_key)
+    expect(keys('all')).toEqual(['f', 'm'])
+    expect(keys('mastercam')).toEqual(['m'])
+    expect(keys('fusion')).toEqual(['f'])
+  })
+
+  it('still applies the text and the family when one system is picked', () => {
+    const drill = makeRow({ cutter_key: 'd', source: 'mastercam', tool_type: 'drill', family: 'hole making' })
+    const found = filterTally([fusion, mastercam, drill], '', familyChoice('hole making'), 'mastercam')
+    expect(found.map((r) => r.cutter_key)).toEqual(['d'])
+  })
+
+  it('shows every system when no source is given', () => {
+    expect(filterTally([fusion, mastercam], '', 'all')).toHaveLength(2)
+  })
+
+  it('drops a picked system that has left the data', () => {
+    expect(validSource([fusion, mastercam], 'mastercam')).toBe('mastercam')
+    expect(validSource([fusion], 'mastercam')).toBe('all')
+  })
+
+  it('sorts by system', () => {
+    const sorted = sortTally([mastercam, fusion], { key: 'source', direction: 'asc' })
+    expect(sorted.map((r) => r.cutter_key)).toEqual(['f', 'm'])
+  })
+
+  it('leaves lines that cannot be written out of the tick-all state', () => {
+    const ticked = makeRow({ cutter_key: 'f', in_library: true })
+    expect(tickedState([ticked, mastercam], [ticked, mastercam])).toBe('all')
+    expect(tickedState([fusion, mastercam], [fusion, mastercam])).toBe('none')
+    expect(tickedState([mastercam], [mastercam])).toBe('none')
+  })
+
+  it('shows the system in the geometry of a cutter by its proper name', () => {
+    expect(cutterFieldRows({ DC: 5, source: 'mastercam' }, ['millimeters'], 'mm')).toEqual([
+      { label: 'Diameter', value: '5.00 mm', other: '' },
+      { label: 'Read from', value: 'Mastercam', other: '' },
+    ])
+  })
+
+  it('names Fusion for a cutter that carries no source, when a group differs in it', () => {
+    const member = (fields: Record<string, number | string>) => ({
+      cutter_key: 'k', description: '', fields, programs: 1, operations: 1, time_s: 0,
+    })
+    const first = member({ DC: 5, source: 'mastercam' })
+    const other = member({ DC: 5 })
+    expect(variantHeadings(['source'], 'in')).toEqual(['Read from'])
+    expect(variantCells(first, first, ['source'], 'in')).toEqual([{ text: 'Mastercam', differs: false }])
+    expect(variantCells(other, first, ['source'], 'in')).toEqual([{ text: 'Fusion', differs: true }])
+  })
+
+  it('says how much transform time has no tool, and nothing when there is none', () => {
+    expect(uncreditedNote(0)).toBe('')
+    expect(uncreditedNote(1860)).toBe('Transform time not credited to a tool: 31m 00s')
   })
 })

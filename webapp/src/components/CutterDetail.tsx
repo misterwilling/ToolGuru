@@ -116,16 +116,22 @@ export function CutterDetail({ detail, display, picture, busy, onClose, onSplit,
       </div>
 
       <div className="actions library">
-        <label>
-          <input
-            type="checkbox"
-            checked={detail.library.picked}
-            disabled={busy}
-            onChange={(event) => onPick(event.target.checked, null)}
-          />{' '}
-          Write to the holding library
-        </label>
-        {detail.library.picked && (
+        {detail.library.writable ? (
+          <label>
+            <input
+              type="checkbox"
+              checked={detail.library.picked}
+              disabled={busy}
+              onChange={(event) => onPick(event.target.checked, null)}
+            />{' '}
+            Write to the holding library
+          </label>
+        ) : (
+          <span className="muted">
+            Read from Mastercam only. It cannot be written to a Fusion tool library yet.
+          </span>
+        )}
+        {detail.library.writable && detail.library.picked && (
           <>
             <span>with</span>
             <select
