@@ -255,6 +255,101 @@ class TestWhatIsWritten:
         assert written(tmp_path)[0]['holder']['product-id'] == 'TH-100'
 
 
+def with_presets(*presets: dict, **overrides) -> dict:
+    made = tool(**overrides)
+    made['start-values'] = {'presets': list(presets)}
+    return made
+
+
+def preset(name: str, **numbers) -> dict:
+    return {'name': name, 'guid': f'id-{name}', 'n': 8000, 'v_f': 40.0, **numbers}
+
+
+def written_presets(tmp_path) -> list[tuple]:
+    (made,) = written(tmp_path)
+    return [(p['name'], p['n']) for p in made['start-values']['presets']]
+
+
+class TestCombinedCuttingData:
+    def test_presets_from_other_programs_are_added_after_the_tools_own(self, tmp_path):
+        scan(tmp_path, 'old', with_presets(preset('Steel'), preset('Brass')), modified=1_000)
+        scan(tmp_path, 'new', with_presets(preset('Aluminum')), modified=2_000)
+        actions.pick_for_library(AppState(), key(tool()), True, None, tmp_path)
+        assert [name for name, _ in written_presets(tmp_path)] == [
+            'Aluminum', 'Brass', 'Steel']
+
+    def test_the_same_name_takes_the_most_recently_saved_programs_numbers(self, tmp_path):
+        scan(tmp_path, 'old', with_presets(preset('Aluminum', n=5000)), modified=1_000)
+        scan(tmp_path, 'new', with_presets(preset('Aluminum', n=9000)), modified=2_000)
+        actions.pick_for_library(AppState(), key(tool()), True, None, tmp_path)
+        assert written_presets(tmp_path) == [('Aluminum', 9000)]
+
+    def test_the_most_recent_wins_even_when_the_tool_is_written_from_another_setup(self, tmp_path):
+        """The tool comes from its usual holder; a later program in another
+        holder still decides the numbers of a preset both have."""
+        usual = with_presets(preset('Aluminum', n=5000))
+        scan(tmp_path, 'a', usual, modified=1_000)
+        scan(tmp_path, 'b', usual, modified=1_500)
+        scan(tmp_path, 'c', with_presets(preset('Aluminum', n=9000), holder=OTHER_HOLDER),
+             modified=2_000)
+        actions.pick_for_library(AppState(), key(tool()), True, None, tmp_path)
+        (made,) = written(tmp_path)
+        assert made['holder']['product-id'] == 'TH-100'
+        assert written_presets(tmp_path) == [('Aluminum', 9000)]
+
+    def test_a_merged_cutters_presets_come_along(self, tmp_path):
+        scan(tmp_path, 'a', with_presets(preset('Aluminum')),
+             with_presets(preset('Aluminum')))
+        scan(tmp_path, 'b', with_presets(preset('Titanium', n=2000), **SHORT))
+        state = AppState()
+        actions.merge_cutters(state, [key(tool()), key(tool(**SHORT))], tmp_path)
+        actions.pick_for_library(state, key(tool()), True, None, tmp_path)
+        (made,) = written(tmp_path)
+        assert made['geometry']['LCF'] == 1.25   # still the cutter that names the line
+        assert written_presets(tmp_path) == [('Aluminum', 8000), ('Titanium', 2000)]
+
+    def test_a_preset_from_a_millimetre_scan_is_written_in_the_inch_tools_unit(self, tmp_path):
+        metric = with_presets(
+            {'name': 'Metric', 'guid': 'm', 'n': 6000, 'v_f': 1016.0, 'f_z': 0.0508,
+             'v_c': 304.8, 'v_f_plunge': 254.0, 'stepover': 2.54, 'use-stepover': True,
+             'ramp-angle': 2},
+            unit='millimeters',
+            geometry={'DC': 12.7, 'LCF': 31.75, 'shoulder-length': 31.75, 'OAL': 76.2,
+                      'SFDM': 12.7, 'LB': 38.1, 'assemblyGaugeLength': 101.6})
+        assert key(metric) == key(tool())
+        scan(tmp_path, 'a', with_presets(preset('Inch')), modified=3_000)
+        scan(tmp_path, 'b', with_presets(preset('Inch')), modified=3_500)
+        scan(tmp_path, 'c', metric, modified=1_000)
+        actions.pick_for_library(AppState(), key(tool()), True, None, tmp_path)
+        (made,) = written(tmp_path)
+        assert made['unit'] == 'inches'
+        added = made['start-values']['presets'][1]
+        assert added['name'] == 'Metric'
+        assert added['n'] == 6000 and added['ramp-angle'] == 2
+        assert added['use-stepover'] is True
+        assert round(added['v_f'], 6) == 40.0
+        assert round(added['f_z'], 6) == 0.002
+        assert round(added['v_c'], 6) == 1000.0
+        assert round(added['v_f_plunge'], 6) == 10.0
+        assert round(added['stepover'], 6) == 0.1
+
+    def test_two_presets_never_share_an_id_in_one_tool(self, tmp_path):
+        copied = dict(preset('Copy'), guid='id-Aluminum')
+        scan(tmp_path, 'a', with_presets(preset('Aluminum')), modified=2_000)
+        scan(tmp_path, 'b', with_presets(copied), modified=1_000)
+        actions.pick_for_library(AppState(), key(tool()), True, None, tmp_path)
+        (made,) = written(tmp_path)
+        ids = [p['guid'] for p in made['start-values']['presets']]
+        assert ids[0] == 'id-Aluminum'
+        assert len(set(ids)) == 2
+
+    def test_a_cutter_with_no_presets_anywhere_is_written_without_any(self, tmp_path):
+        bare = make_tool()
+        scan(tmp_path, 'a', bare)
+        actions.pick_for_library(AppState(), key(bare), True, None, tmp_path)
+        assert 'start-values' not in written(tmp_path)[0]
+
+
 class TestAssemblyTally:
     def test_only_the_assembly_that_will_be_written_is_ticked(self, tmp_path):
         scan(tmp_path, 'a', tool())
