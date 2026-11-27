@@ -367,6 +367,28 @@ pushed.
   - Tests: `test_holding.py` (TestPickingMany), `utils.test.ts`. In-Fusion:
     36 of 36 pass.
 
+- Combined cutting data in the holding library (2026-11-27, branch
+  `combine-presets`). The owner asked whether the
+  cutting data of similar entries could be merged when writing.
+  - A written tool used to carry the presets of one scan only. It now
+    carries every preset found on its cutter in any scan, including the
+    cutters merged with it, used or not (`holding.gathered_presets`).
+  - The owner's choice for a name with different numbers: the version from
+    the most recently saved program is written. The tool's own presets keep
+    their place; the gathered ones follow by name.
+  - A preset from a scan in the other unit is converted (feeds, chip load,
+    stepover and stepdown as lengths; surface speed between ft/min and
+    m/min; rpm and angles left alone). Typed expressions are kept as they
+    are, since they name their own units.
+  - Two presets that share an id in one tool get a fresh one for the
+    second (the owner's data has one such pair).
+  - Checked read-only on the owner's data: all 120 lines are accepted by
+    `Tool.createFromJson` and Fusion holds all 829 presets asked for.
+  - The cutting data table in the detail is unchanged: it still shows
+    every version that operations picked.
+  - Tests: `test_holding.py` (TestCombinedCuttingData); the in-Fusion
+    library test now writes two presets on one tool. In-Fusion: 36 of 36.
+
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:
 1. Cutter detail — built, see In flight.

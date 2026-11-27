@@ -27,7 +27,9 @@ class TestWriteLibrary(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         library.delete_library(NAME)
-        end_mill = dict(helpers.END_MILL, **{'start-values': {'presets': [PRESET]}})
+        finishing = dict(PRESET, name='Test finishing', n=12000)
+        end_mill = dict(helpers.END_MILL,
+                        **{'start-values': {'presets': [PRESET, finishing]}})
         cls.tools = [as_json(end_mill), as_json(helpers.DRILL)]
 
     def tearDown(self):
@@ -50,8 +52,8 @@ class TestWriteLibrary(unittest.TestCase):
         # Fusion stores lengths in its own unit, so 0.5 in comes back a hair off.
         self.assertAlmostEqual(end_mill['geometry']['DC'], 0.5, places=9)
         presets = end_mill['start-values']['presets']
-        self.assertEqual([p['name'] for p in presets], ['Test roughing'])
-        self.assertEqual(presets[0]['n'], 8000)
+        self.assertEqual([(p['name'], p['n']) for p in presets],
+                         [('Test roughing', 8000), ('Test finishing', 12000)])
 
     def test_writing_again_replaces_the_library_instead_of_adding_a_second(self):
         library.write_library(NAME, self.tools)
