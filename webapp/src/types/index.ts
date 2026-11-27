@@ -198,6 +198,7 @@ export interface Browser {
 export interface ConfirmScan {
   folder: string
   count: number
+  unchanged: number // already scanned at their current version; a scan skips them
 }
 
 export interface ScanProblem {
@@ -212,6 +213,7 @@ export interface ScanJob {
   total: number
   pending: number
   scanned: number
+  unchanged: number // not opened: the data already holds this version
   skipped: number
   failed: number
   problems: ScanProblem[]

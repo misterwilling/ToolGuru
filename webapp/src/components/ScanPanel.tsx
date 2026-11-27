@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AppState } from '../types'
-import { browserHere, scanHeadline, scanOutcome, scanPercent } from '../utils'
+import { browserHere, confirmScanText, scanHeadline, scanOutcome, scanPercent } from '../utils'
 
 interface Props {
   state: AppState
@@ -66,12 +66,12 @@ export function ScanPanel({ state, busy, run }: Props) {
 
       {confirmScan && (
         <div className="confirm">
-          “{confirmScan.folder}” contains {confirmScan.count} Fusion{' '}
-          {confirmScan.count === 1 ? 'design' : 'designs'}. Scan {confirmScan.count === 1 ? 'it' : 'them'}?
-          Each one is opened, read and closed without saving.
-          <button className="primary" disabled={busy} onClick={() => run('start_folder_scan')}>
-            Start scan
-          </button>
+          {confirmScanText(confirmScan)}
+          {confirmScan.unchanged < confirmScan.count && (
+            <button className="primary" disabled={busy} onClick={() => run('start_folder_scan')}>
+              Start scan
+            </button>
+          )}
           <button disabled={busy} onClick={() => run('close_folder_picker')}>Cancel</button>
         </div>
       )}

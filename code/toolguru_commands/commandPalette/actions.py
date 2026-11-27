@@ -19,7 +19,7 @@ from toolguru_lib import similar
 from toolguru_lib import store as scan_store
 from toolguru_lib.detail import build_cutter_detail
 from toolguru_lib.records import (
-    DocumentRecord, FileRef, ObservationRecord, ScanError)
+    SCAN_LEVEL, DocumentRecord, FileRef, ObservationRecord, ScanError)
 from toolguru_lib.store import Store, data_path
 from toolguru_lib.tally import build_assembly_tally, build_tally
 
@@ -74,9 +74,12 @@ def view(state: AppState, base_dir: Path | None = None) -> dict:
         }
     counts = store.counts()
     counts['cutters'] = len({row['cutter_key'] for row in rows})   # after merging
+    unchanged = 0
+    if state.proposed_scan is not None:
+        unchanged = len(_unchanged(state.proposed_scan['files'], store))
     return state.serialize(
         counts, tally, settings, store.job(), detail, databases, similar_view,
-        len(library))
+        len(library), unchanged)
 
 
 def _detail_library(rows: list[dict], picks: dict[str, str | None],
@@ -94,6 +97,17 @@ def _detail_library(rows: list[dict], picks: dict[str, str | None],
         'choice': next((picks[key] for key in keys if picks[key] is not None), None),
         'assembly_key': written['assembly_key'],
     }
+
+
+def _unchanged(files: list[FileRef], store: Store) -> set[str]:
+    """The files a folder scan need not open: the data already holds this
+    version of the program, read by a scan that recorded everything a scan
+    records today. A file whose version is not known is always opened."""
+    marks = store.scan_marks()
+    return {file.file_id for file in files
+            if file.version > 0
+            and marks.get(file.file_id, (0, 0))[0] == file.version
+            and marks[file.file_id][1] >= SCAN_LEVEL}
 
 
 def refuse_while_scanning(state: AppState) -> bool:
@@ -292,6 +306,44 @@ def pick_for_library(state: AppState, cutter_key: str, picked: bool,
     store.pick_for_library(keys, assembly_key)
 
 
+def pick_many_for_library(state: AppState, lines: object, picked: bool,
+                          base_dir: Path | None = None) -> None:
+    """Tick or untick several tally lines at once: "tick all", or a run of
+    lines. Each line is `{'cutterKey': ..., 'assemblyKey': ... or None}`.
+
+    A cutter that is already ticked keeps the holder and stickout chosen for
+    it. A cutter named by one line is ticked in that line's assembly; one
+    named by several lines (counting by assembly) is ticked in its usual one.
+    Lines for cutters that are not in the data are passed over.
+    """
+    if refuse_while_scanning(state):
+        return
+    state.begin_action()
+    if not isinstance(lines, list) or not all(
+            isinstance(line, dict) and isinstance(line.get('cutterKey'), str)
+            for line in lines):
+        state.error = 'The lines to tick were not understood.'
+        return
+    store = _store(base_dir)
+    rows = similar.apply_merges(store.observation_rows(), store.merged_cutters())
+    tolerance = user_settings.load(base_dir).stickout_tolerance_mm
+    already = store.library_picks()
+    wanted: dict[str, list[str | None]] = {}
+    for line in lines:
+        wanted.setdefault(line['cutterKey'], []).append(line.get('assemblyKey') or None)
+    for cutter_key, assemblies in wanted.items():
+        keys = sorted(holding.line_keys(rows, cutter_key))
+        if not keys:
+            continue
+        if not picked:
+            store.unpick_for_library(keys)
+        elif not already.keys() & keys:
+            assembly_key = assemblies[0] if len(assemblies) == 1 else None
+            if assembly_key not in holding.assembly_keys(rows, cutter_key, tolerance):
+                assembly_key = None
+            store.pick_for_library(keys, assembly_key)
+
+
 def library_tools(base_dir: Path | None = None) -> list[str]:
     """The picked cutters as tool records, ready to write to Fusion."""
     store = _store(base_dir)
@@ -373,7 +425,7 @@ def load_database(state: AppState, name: str, mode: str, stamp: str,
             result = saved.load_adding(name, base_dir)
             state.notice = (
                 f"Merged “{name}”: {_programs(result['added'])} added, "
-                f"{result['updated']} updated to a later version, "
+                f"{result['updated']} replaced by a more recent scan, "
                 f"{result['kept']} already here.")
     except saved.SavedError as error:
         state.error = str(error)
@@ -423,8 +475,9 @@ def start_scan(state: AppState, base_dir: Path | None = None) -> bool:
     if proposed is None:
         state.error = 'Count a folder before starting a scan.'
         return False
-    _store(base_dir).start_job(
-        proposed['folder'], proposed['files'])
+    store = _store(base_dir)
+    store.start_job(proposed['folder'], proposed['files'],
+                    _unchanged(proposed['files'], store))
     state.proposed_scan = None
     state.browser = None
     state.last_scan = None
@@ -476,9 +529,10 @@ def scan_step(state: AppState, scan_one: ScanOne,
         return state.scan_running   # False when stopped while it was open
     state.scan_running = False
     state.begin_action()
-    job = store.job() or {'scanned': 0, 'skipped': 0, 'failed': 0}
+    job = store.job() or {'scanned': 0, 'unchanged': 0, 'skipped': 0, 'failed': 0}
+    unchanged = f"{job['unchanged']} unchanged, " if job['unchanged'] else ''
     state.notice = (
-        f"Folder scan finished: {job['scanned']} scanned, "
+        f"Folder scan finished: {job['scanned']} scanned, {unchanged}"
         f"{job['skipped']} skipped, {job['failed']} failed.")
     return False
 

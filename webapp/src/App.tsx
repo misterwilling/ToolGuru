@@ -244,6 +244,7 @@ export function App() {
             onOpen={(cutterKey) => run('show_cutter', { cutterKey })}
             locked={locked}
             onPick={(cutterKey, picked, assemblyKey) => run('pick_for_library', { cutterKey, picked, assemblyKey })}
+            onPickMany={(lines, picked) => run('pick_many_for_library', { lines, picked })}
           />
         </div>
       )}

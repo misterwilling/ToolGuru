@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import type { LibraryLine } from '../utils'
 import type { CountBy, LengthUnit, SortKey, SortState, TallyRow } from '../types'
 import {
   clampWidth,
@@ -11,6 +12,9 @@ import {
   formatDate,
   formatDuration,
   formatToolNumbers,
+  libraryLine,
+  rowsBetween,
+  tickedState,
   mergedCount,
   otherUnit,
   rowKey,
@@ -59,6 +63,8 @@ interface Props {
   locked: boolean
   /** Tick or untick a row for the holding library, in that row's assembly when counting by assembly. */
   onPick: (cutterKey: string, picked: boolean, assemblyKey: string | null) => void
+  /** Tick or untick several rows at once: the box in the heading, or a shift-click's run. */
+  onPickMany: (lines: LibraryLine[], picked: boolean) => void
 }
 
 export function TallyTable({
@@ -70,6 +76,7 @@ export function TallyTable({
   onOpen,
   locked,
   onPick,
+  onPickMany,
 }: Props) {
   const [sort, setSort] = useState<SortState>({ key: 'operations', direction: 'desc' })
   const [text, setText] = useState('')
@@ -88,6 +95,10 @@ export function TallyTable({
     drag.current = null
   }
 
+  // The row whose tick was clicked last: where a shift-click's run starts.
+  const anchor = useRef<string | null>(null)
+  const tickAll = useRef<HTMLInputElement>(null)
+
   const byAssembly = countBy === 'assembly'
   // The drop-down lists only what is in the data, so a choice can vanish
   // when the data changes: after a rescan or a reset.
@@ -97,6 +108,12 @@ export function TallyTable({
     diameter: diameterParts(row.diameter_mm, row.units, display),
     stickout: stickoutParts(row.stickout_min_mm, row.stickout_max_mm, row.units, display),
   }))
+  const shownRows = shown.map((line) => line.row)
+  const ticked = tickedState(shownRows, rows)
+  // A box cannot be given its half-ticked look from its attributes.
+  useEffect(() => {
+    if (tickAll.current) tickAll.current.indeterminate = ticked === 'some'
+  }, [ticked])
   // A length keeps its own column, so every row's value lines up. The other
   // unit, shown for tools entered in it, gets a column of its own beside it,
   // and only when some row has one.
@@ -172,13 +189,25 @@ export function TallyTable({
         </select>
         <span className="muted">
           {shown.length} of {rows.length} {byAssembly ? 'assemblies' : 'cutters'}. Click a row for the
-          cutter's detail.
+          cutter's detail. Shift-click a tick to tick a run of lines.
         </span>
       </div>
       <table style={{ '--description-width': `${width}px` } as CSSProperties}>
         <thead>
           <tr>
-            <th className="small pick" title="Tick the cutters to write to the holding library">Lib</th>
+            <th
+              className="small pick"
+              title="Tick the cutters to write to the holding library. This box ticks or unticks every cutter in the list as shown."
+            >
+              <input
+                ref={tickAll}
+                type="checkbox"
+                aria-label="Tick or untick every cutter shown"
+                checked={ticked === 'all'}
+                disabled={locked || shown.length === 0}
+                onChange={() => onPickMany(shown.map((line) => libraryLine(line.row)), ticked !== 'all')}
+              />
+            </th>
             {BEFORE_DIAMETER.map(heading)}
             {heading(diameter)}
             {otherDiameters && (
@@ -201,10 +230,17 @@ export function TallyTable({
               <td className="pick" onClick={(event) => event.stopPropagation()}>
                 <input
                   type="checkbox"
-                  title="Write this cutter to the holding library"
+                  title="Write this cutter to the holding library. Shift-click to tick every line from the last one clicked."
                   checked={row.in_library}
                   disabled={locked}
-                  onChange={(event) => onPick(row.cutter_key, event.target.checked, row.assembly_key ?? null)}
+                  onChange={() => undefined}
+                  onClick={(event) => {
+                    const picked = !row.in_library
+                    const run = event.shiftKey ? rowsBetween(shownRows, anchor.current, rowKey(row)) : []
+                    if (run.length > 1) onPickMany(run.map(libraryLine), picked)
+                    else onPick(row.cutter_key, picked, row.assembly_key ?? null)
+                    anchor.current = rowKey(row)
+                  }}
                 />
               </td>
               <td>{row.tool_type}</td>

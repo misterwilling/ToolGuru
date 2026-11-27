@@ -297,7 +297,7 @@ class TestActions:
         actions.load_database(state, 'First', 'add', STAMP, tmp_path)
 
         assert state.notice == (
-            'Merged “First”: 1 program added, 1 updated to a later version, 0 already here.')
+            'Merged “First”: 1 program added, 1 replaced by a more recent scan, 0 already here.')
         assert not (tmp_path / f'toolguru-backup-{STAMP}.sqlite').exists()
 
     def test_an_unknown_way_to_load_changes_nothing(self, tmp_path):

@@ -122,6 +122,80 @@ class TestPicking:
         assert actions.library_tools(tmp_path) == []
 
 
+def line(made: dict, assembly_key: str | None = None) -> dict:
+    return {'cutterKey': key(made), 'assemblyKey': assembly_key}
+
+
+class TestPickingMany:
+    def test_every_named_line_is_ticked_at_once(self, tmp_path):
+        scan(tmp_path, 'a', tool(), tool(**DRILL), tool(**SHORT))
+        actions.pick_many_for_library(
+            AppState(), [line(tool()), line(tool(**DRILL))], True, tmp_path)
+        assert lines(tmp_path) == {
+            key(tool()): True, key(tool(**DRILL)): True, key(tool(**SHORT)): False}
+
+    def test_every_named_line_is_unticked_at_once(self, tmp_path):
+        scan(tmp_path, 'a', tool(), tool(**DRILL), tool(**SHORT))
+        state = AppState()
+        everything = [line(tool()), line(tool(**DRILL)), line(tool(**SHORT))]
+        actions.pick_many_for_library(state, everything, True, tmp_path)
+        actions.pick_many_for_library(state, everything[:2], False, tmp_path)
+        assert lines(tmp_path) == {
+            key(tool()): False, key(tool(**DRILL)): False, key(tool(**SHORT)): True}
+
+    def test_a_cutter_already_ticked_keeps_the_setup_chosen_for_it(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        scan(tmp_path, 'b', tool())
+        scan(tmp_path, 'c', tool(holder=OTHER_HOLDER))
+        state = AppState()
+        other = assembly_of(tmp_path, 'Other Holder')
+        actions.pick_for_library(state, key(tool()), True, other, tmp_path)
+        actions.pick_many_for_library(state, [line(tool())], True, tmp_path)
+        assert written(tmp_path)[0]['holder']['product-id'] == 'TH-200'
+
+    def test_one_assembly_line_ticks_the_cutter_in_that_assembly(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        scan(tmp_path, 'b', tool())
+        scan(tmp_path, 'c', tool(holder=OTHER_HOLDER))
+        other = assembly_of(tmp_path, 'Other Holder')
+        actions.pick_many_for_library(AppState(), [line(tool(), other)], True, tmp_path)
+        assert written(tmp_path)[0]['holder']['product-id'] == 'TH-200'
+
+    def test_several_assembly_lines_of_one_cutter_tick_it_in_its_usual_setup(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        scan(tmp_path, 'b', tool())
+        scan(tmp_path, 'c', tool(holder=OTHER_HOLDER))
+        usual, other = assembly_of(tmp_path, 'Test Holder'), assembly_of(tmp_path, 'Other Holder')
+        actions.pick_many_for_library(
+            AppState(), [line(tool(), other), line(tool(), usual)], True, tmp_path)
+        assert len(written(tmp_path)) == 1
+        assert written(tmp_path)[0]['holder']['product-id'] == 'TH-100'
+
+    def test_a_line_for_a_cutter_that_is_gone_is_passed_over(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        state = AppState()
+        actions.pick_many_for_library(
+            state, [{'cutterKey': 'gone', 'assemblyKey': None}, line(tool())], True, tmp_path)
+        assert state.error == ''
+        assert lines(tmp_path) == {key(tool()): True}
+
+    def test_lines_that_make_no_sense_change_nothing(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        state = AppState()
+        for bad in (None, 'abc', [key(tool())], [{'assemblyKey': 'x'}]):
+            actions.pick_many_for_library(state, bad, True, tmp_path)
+            assert state.error == 'The lines to tick were not understood.'
+        assert lines(tmp_path) == {key(tool()): False}
+
+    def test_nothing_is_ticked_during_a_folder_scan(self, tmp_path):
+        scan(tmp_path, 'a', tool())
+        state = AppState()
+        state.scan_busy = True
+        actions.pick_many_for_library(state, [line(tool())], True, tmp_path)
+        assert state.error == 'Stop the folder scan first.'
+        assert lines(tmp_path) == {key(tool()): False}
+
+
 class TestWhatIsWritten:
     def test_the_tool_is_written_with_its_holder_and_presets(self, tmp_path):
         scan(tmp_path, 'a', tool())

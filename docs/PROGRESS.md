@@ -326,6 +326,47 @@ pushed.
     library of its own name. In-Fusion: 35 of 35 pass.
   - Not yet done by the owner: writing the real holding library.
 
+- Scan time and skipping unchanged programs (2026-11-26, branch
+  `scan-stamp-skip-unchanged`). Asked for after
+  Milestone 4 was merged.
+  - Each scanned program now records when it was scanned (`scanned_at`) and
+    what that scan recorded (`scan_level`, see `records.SCAN_LEVEL`: 1 the
+    original scan, 2 with speeds and feeds as numbers). Older data gains
+    the columns with no time and level 1.
+  - Merging databases keeps the more recently scanned copy of a program in
+    both. Scans with no time count as the oldest; between two of those the
+    later program version wins, as before.
+  - A folder scan does not open a program when the data already holds its
+    current hub version at the current scan level. The folder listing
+    carries each file's version (`FileRef.version`); the decision is made
+    when the scan starts and such files are queued as `unchanged`. The
+    count shows before starting, and "Start scan" is hidden when nothing
+    would be opened. "Scan active document" always reads the program.
+  - Raise `SCAN_LEVEL` whenever a scan starts recording something new, or
+    unchanged programs will never pick it up.
+  - The owner's 64 programs are all at level 1, so the next folder scan
+    reads every one of them once more; after that, unchanged ones are
+    skipped. Checked read-only: all 64 stored versions equal the hub's.
+  - Designs with no Manufacturing data are not remembered, so they are
+    opened again on every folder scan.
+  - Tests: `toolguru_tests/test_rescan.py`, `scan.test.ts`, and in Fusion a
+    check that a listed design carries its latest version. In-Fusion: 36 of
+    36 pass.
+
+- Ticking many lines for the holding library (2026-11-27, branch
+  `scan-stamp-skip-unchanged`).
+  - The "Lib" heading is now a box that ticks or unticks every cutter in
+    the list as shown, so the filter decides what "all" means. It is half
+    ticked when only some are. Shift-clicking a tick applies that tick to
+    every line from the last one clicked.
+  - One action, `pick_many_for_library`. A cutter that is already ticked
+    keeps the setup chosen for it. Counting by assembly, a cutter named by
+    one line is ticked in that assembly and one named by several lines in
+    its usual one. The heading box counts cutters, not lines
+    (`utils.tickedState`).
+  - Tests: `test_holding.py` (TestPickingMany), `utils.test.ts`. In-Fusion:
+    36 of 36 pass.
+
 ## Next step
 Milestone 4, one slice at a time on `m4-cutter-detail`:
 1. Cutter detail — built, see In flight.
@@ -353,9 +394,6 @@ Fusion-only.
 - Which tool numbers form the per-job pool (needed for milestone 5).
 - `actions.view` rebuilds the whole tally on every palette action and after
   every scanned program; revisit for speed once the data is large.
-- A folder scan re-opens every design even when its version was scanned
-  before. Fine for one sweep per folder; add "skip unchanged" if folders get
-  rescanned often.
 - Counting a folder with subfolders asks the hub once per folder (about a
   second each) and blocks Fusion while it runs. Not yet tried on a large
   project.

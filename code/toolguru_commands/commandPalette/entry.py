@@ -241,6 +241,10 @@ def _handle_pick_for_library(data: dict) -> None:
         str(assembly_key) if assembly_key else None)
 
 
+def _handle_pick_many_for_library(data: dict) -> None:
+    actions.pick_many_for_library(state, data.get('lines'), bool(data.get('picked')))
+
+
 def _handle_write_library(data: dict) -> None:
     if actions.refuse_while_scanning(state):
         return
@@ -374,6 +378,7 @@ _handlers: dict = {
     'split_cutters': _handle_split_cutters,
     'not_similar': _handle_not_similar,
     'pick_for_library': _handle_pick_for_library,
+    'pick_many_for_library': _handle_pick_many_for_library,
     'write_library': _handle_write_library,
     'open_databases': _handle_open_databases,
     'close_databases': _handle_close_databases,

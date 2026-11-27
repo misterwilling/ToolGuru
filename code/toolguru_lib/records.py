@@ -8,15 +8,24 @@ from dataclasses import dataclass
 from toolguru_lib import assembly, cutter
 
 
+# What a scan records. Raise it when a scan starts recording something new,
+# so programs scanned before are read again even though they have not changed.
+#   1: tools, holders, expressions and cutting time
+#   2: spindle speed and feed as numbers
+SCAN_LEVEL = 2
+
+
 class ScanError(Exception):
     """A document cannot be scanned. The message is written for the user."""
 
 
 @dataclass(frozen=True)
 class FileRef:
-    """A hub file waiting to be scanned."""
+    """A hub file waiting to be scanned. `version` is its latest version in
+    the hub; 0 when that is not known."""
     file_id: str
     name: str
+    version: int = 0
 
 
 @dataclass(frozen=True)
@@ -27,6 +36,8 @@ class DocumentRecord:
     project: str
     date_created: int   # UNIX epoch seconds
     date_modified: int  # UNIX epoch seconds
+    scanned_at: int | None = None   # when it was read; None for older scans
+    scan_level: int = SCAN_LEVEL    # what that scan recorded
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { browserHere, isAppState, scanHeadline, scanOutcome, scanPercent } from './utils'
+import { browserHere, confirmScanText, isAppState, scanHeadline, scanOutcome, scanPercent } from './utils'
 import type { ScanJob } from './types'
 
 function makeScan(overrides?: Partial<ScanJob>): ScanJob {
@@ -8,6 +8,7 @@ function makeScan(overrides?: Partial<ScanJob>): ScanJob {
     total: 40,
     pending: 28,
     scanned: 10,
+    unchanged: 0,
     skipped: 1,
     failed: 1,
     problems: [],
@@ -51,6 +52,40 @@ describe('scanHeadline', () => {
 describe('scanOutcome', () => {
   it('lists the three outcomes', () => {
     expect(scanOutcome(makeScan())).toBe('10 scanned, 1 skipped, 1 failed')
+  })
+  it('names unchanged programs when some were skipped', () => {
+    expect(scanOutcome(makeScan({ scanned: 4, unchanged: 6 }))).toBe('4 scanned, 6 unchanged, 1 skipped, 1 failed')
+  })
+  it('counts unchanged programs as done', () => {
+    expect(scanPercent(makeScan({ total: 10, pending: 0, scanned: 0, unchanged: 10 }))).toBe(100)
+  })
+})
+
+describe('confirmScanText', () => {
+  const confirm = { folder: 'Project / Folder', count: 12, unchanged: 0 }
+  it('asks to scan them all when none was scanned before', () => {
+    expect(confirmScanText(confirm)).toBe(
+      '“Project / Folder” contains 12 Fusion designs. Scan them? Each one is opened, read and closed without saving.',
+    )
+  })
+  it('speaks of one design as it', () => {
+    expect(confirmScanText({ ...confirm, count: 1 })).toBe(
+      '“Project / Folder” contains 1 Fusion design. Scan it? Each one is opened, read and closed without saving.',
+    )
+  })
+  it('says how many will be skipped and how many opened', () => {
+    expect(confirmScanText({ ...confirm, unchanged: 9 })).toBe(
+      '“Project / Folder” contains 12 Fusion designs. 9 have not changed since they were scanned and will be ' +
+        'skipped. Scan the other 3? Each one is opened, read and closed without saving.',
+    )
+  })
+  it('speaks of one unchanged design as it', () => {
+    expect(confirmScanText({ ...confirm, unchanged: 1 })).toContain('1 has not changed since it was scanned')
+  })
+  it('says so when a scan would open nothing', () => {
+    expect(confirmScanText({ ...confirm, unchanged: 12 })).toBe(
+      '“Project / Folder” contains 12 Fusion designs. None has changed since it was scanned, so a scan would open nothing.',
+    )
   })
 })
 
